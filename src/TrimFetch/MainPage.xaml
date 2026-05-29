@@ -1,0 +1,928 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="TrimFetch.MainPage"
+    x:Name="PageRoot"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:TrimFetch.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:TrimFetch"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:TrimFetch.Models"
+    AutomationProperties.Name="TrimFetch Media Downloader"
+    Background="Transparent"
+    IsTabStop="True"
+    RequestedTheme="Dark"
+    UseSystemFocusVisuals="False"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <Storyboard x:Name="InputEntranceStoryboard">
+            <DoubleAnimation
+                Storyboard.TargetName="InputChromeHost"
+                Storyboard.TargetProperty="Opacity"
+                From="0"
+                To="1"
+                Duration="0:0:0.16">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <Storyboard x:Name="InputThumbnailEntranceStoryboard">
+            <DoubleAnimation
+                Storyboard.TargetName="InputThumbnailTranslate"
+                Storyboard.TargetProperty="X"
+                From="-56"
+                To="0"
+                Duration="0:0:0.24">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+            <DoubleAnimation
+                Storyboard.TargetName="InputThumbnailHost"
+                Storyboard.TargetProperty="Opacity"
+                From="0"
+                To="1"
+                Duration="0:0:0.2" />
+        </Storyboard>
+
+        <Storyboard x:Name="TrimEntranceStoryboard">
+            <DoubleAnimation
+                Storyboard.TargetName="TrimPanel"
+                Storyboard.TargetProperty="Opacity"
+                From="0"
+                To="1"
+                Duration="0:0:0.32">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <Storyboard x:Name="DownloadContourFadeOutStoryboard">
+            <DoubleAnimation
+                Storyboard.TargetName="DownloadContourCanvas"
+                Storyboard.TargetProperty="Opacity"
+                From="1"
+                To="0"
+                Duration="0:0:0.22">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseIn" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <Storyboard x:Name="TrimCloseStoryboard">
+            <DoubleAnimation
+                Storyboard.TargetName="TrimPanel"
+                Storyboard.TargetProperty="Opacity"
+                From="1"
+                To="0"
+                Duration="0:0:0.12">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseIn" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <Storyboard x:Name="HistoryEntranceStoryboard">
+            <DoubleAnimation
+                BeginTime="0:0:0.05"
+                Storyboard.TargetName="HistoryPanel"
+                Storyboard.TargetProperty="Opacity"
+                From="0"
+                To="1"
+                Duration="0:0:0.14">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <Storyboard x:Name="HotkeyRevealStoryboard">
+            <DoubleAnimation
+                Storyboard.TargetName="ContentStack"
+                Storyboard.TargetProperty="Opacity"
+                From="0"
+                To="1"
+                Duration="0:0:0.18">
+                <DoubleAnimation.EasingFunction>
+                    <CubicEase EasingMode="EaseOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+    </Page.Resources>
+
+    <Grid
+        x:Name="LayoutRoot"
+        Background="Transparent"
+        KeyDown="PageRoot_KeyDown"
+        Padding="0"
+        VerticalAlignment="Top">
+        <StackPanel
+            x:Name="ContentStack"
+            Background="Transparent"
+            Width="{StaticResource OverlayContentWidth}"
+            HorizontalAlignment="Center"
+            Spacing="{StaticResource OverlaySectionGap}"
+            VerticalAlignment="Top"
+            Visibility="{x:Bind local:MainPage.InverseBoolToVisibility(ViewModel.ShowDependencySetup), Mode=OneWay}">
+            <!-- Section 1: URL input (progress ring sits outside clipped card chrome) -->
+            <Grid
+                x:Name="InputChromeHost"
+                Width="{StaticResource OverlayContentWidth}"
+                Height="{StaticResource OverlayInputHeight}"
+                HorizontalAlignment="Center"
+                Opacity="0"
+                RenderTransformOrigin="0.5,0"
+                PointerEntered="InputChrome_PointerEntered"
+                PointerExited="InputChrome_PointerExited">
+                <Grid.RenderTransform>
+                    <CompositeTransform
+                        x:Name="InputTransform"
+                        ScaleX="1"
+                        ScaleY="1"
+                        TranslateY="0" />
+                </Grid.RenderTransform>
+
+                <Border
+                    x:Name="InputChrome"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Style="{StaticResource OverlayInputChromeStyle}" />
+
+                <Grid>
+                    <Grid
+                        Padding="12,0,12,0"
+                        VerticalAlignment="Center"
+                        ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="InputThumbnailColumn" Width="0" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border
+                        x:Name="InputThumbnailHost"
+                        Grid.Column="0"
+                        Width="48"
+                        Height="48"
+                        Margin="4,0,0,0"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                        CornerRadius="4"
+                        Opacity="0"
+                        Visibility="Collapsed">
+                        <Border.RenderTransform>
+                            <TranslateTransform x:Name="InputThumbnailTranslate" X="-56" />
+                        </Border.RenderTransform>
+                        <Image
+                            x:Name="InputThumbnailImage"
+                            Stretch="UniformToFill"
+                            Source="{x:Bind ViewModel.InputPreviewThumbnailPath, Mode=OneWay, Converter={StaticResource ThumbnailPathConverter}, ConverterParameter=96}" />
+                    </Border>
+
+                    <TextBox
+                        x:Name="UrlTextBox"
+                        Grid.Column="1"
+                        AutomationProperties.AutomationId="UrlTextBox"
+                        IsSpellCheckEnabled="False"
+                        IsTextPredictionEnabled="False"
+                        IsReadOnly="{x:Bind ViewModel.IsDownloading, Mode=OneWay}"
+                        KeyDown="UrlTextBox_KeyDown"
+                        PlaceholderText="Paste Instagram, X, or YouTube URL"
+                        Style="{StaticResource OverlayUrlTextBoxStyle}"
+                        VerticalAlignment="Center"
+                        Text="{x:Bind ViewModel.SourceUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        TextChanged="UrlTextBox_TextChanged">
+                        <TextBox.Resources>
+                            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlFocusRingBorderBrush" Color="Transparent" />
+                            <SolidColorBrush x:Key="ControlFocusRingBrush" Color="Transparent" />
+                            <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+                        </TextBox.Resources>
+                    </TextBox>
+
+                    <Button
+                        x:Name="SettingsButton"
+                        Grid.Column="2"
+                        Width="28"
+                        Height="28"
+                        Padding="0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="Settings"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Opacity="0"
+                        IsHitTestVisible="False"
+                        IsTabStop="False">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE713;" FontSize="16" />
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem Click="OpenSettings_Click" Text="TrimFetch settings" />
+                                <MenuFlyoutItem Command="{x:Bind ViewModel.ChooseFolderCommand}" Text="Change folder" />
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Command="{x:Bind ViewModel.ClearHistoryCommand}" Text="Clear history" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                    </Grid>
+                </Grid>
+
+                <Canvas
+                    x:Name="DownloadContourCanvas"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    IsHitTestVisible="False"
+                    Visibility="Collapsed">
+                    <Path
+                        x:Name="DownloadContourTrack"
+                        Stroke="{ThemeResource ControlStrokeColorDefaultBrush}"
+                        Opacity="0.28"
+                        StrokeLineJoin="Round"
+                        Fill="Transparent" />
+                    <Path
+                        x:Name="DownloadContourProgress"
+                        Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+                        StrokeLineJoin="Round"
+                        StrokeEndLineCap="Round"
+                        Fill="Transparent" />
+                </Canvas>
+            </Grid>
+
+            <!-- Section 2: Video trim -->
+            <Border
+                x:Name="TrimPanel"
+                Opacity="0"
+                RenderTransformOrigin="0.5,0"
+                PointerEntered="TrimPanel_PointerEntered"
+                PointerExited="TrimPanel_PointerExited"
+                Style="{StaticResource OverlaySectionCardStyle}"
+                Visibility="Collapsed">
+                <Border.RenderTransform>
+                    <CompositeTransform
+                        x:Name="TrimTransform"
+                        ScaleX="1"
+                        ScaleY="1"
+                        TranslateY="0" />
+                </Border.RenderTransform>
+                <Grid RowDefinitions="Auto,Auto" RowSpacing="12" VerticalAlignment="Top">
+                    <Border
+                        Grid.Row="0"
+                        x:Name="TrimVideoHost"
+                        CornerRadius="8,8,0,0"
+                        Height="{StaticResource OverlayTrimVideoHeight}">
+                        <Grid>
+                        <Grid
+                            x:Name="TrimVideoSurface"
+                            Background="{ThemeResource ControlFillColorDefaultBrush}">
+                                <MediaPlayerElement
+                                    x:Name="VideoPlayer"
+                                    AutoPlay="False"
+                                    AutomationProperties.AutomationId="VideoPlayer"
+                                    AreTransportControlsEnabled="False"
+                                    Stretch="Uniform"
+                                    Visibility="Collapsed" />
+
+                                <Image
+                                    x:Name="TrimPosterImage"
+                                    Stretch="Uniform"
+                                    Visibility="Collapsed" />
+
+                                <Border
+                                    x:Name="AudioModePlaceholder"
+                                    Background="#14FFFFFF"
+                                    HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Stretch"
+                                    Visibility="Collapsed">
+                                    <FontIcon
+                                        FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                        Glyph="&#xEC4F;"
+                                        FontSize="48"
+                                        Foreground="#66FFFFFF"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center" />
+                                </Border>
+                        </Grid>
+
+                        <Rectangle
+                            Height="120"
+                            VerticalAlignment="Bottom"
+                            IsHitTestVisible="False"
+                            Opacity="0.35">
+                            <Rectangle.Fill>
+                                <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                                    <GradientStop Color="#00000000" Offset="0" />
+                                    <GradientStop Color="#99000000" Offset="1" />
+                                </LinearGradientBrush>
+                            </Rectangle.Fill>
+                        </Rectangle>
+
+                        <Grid
+                            x:Name="TrimControls"
+                            Opacity="0"
+                            IsHitTestVisible="False">
+                            <Button
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Margin="16"
+                                AutomationProperties.Name="Close trim"
+                                Click="CloseTrim_Click"
+                                Style="{StaticResource OverlayIconButtonStyle}">
+                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE711;" FontSize="14" />
+                            </Button>
+
+                            <Grid Margin="20,0,20,20" VerticalAlignment="Bottom">
+                                <Button
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Bottom"
+                                    AutomationProperties.Name="Play trim"
+                                    Click="PlayTrim_Click"
+                                    Style="{StaticResource OverlayIconButtonStyle}"
+                                    ToolTipService.ToolTip="Play">
+                                    <FontIcon
+                                        x:Name="PlayPauseIcon"
+                                        FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                        Glyph="&#xE768;"
+                                        FontSize="14" />
+                                </Button>
+
+                                <StackPanel
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Bottom"
+                                    Orientation="Horizontal"
+                                    Spacing="8">
+                                    <StackPanel
+                                        Orientation="Horizontal"
+                                        Spacing="2"
+                                        Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.ShowTrimModeToggles), Mode=OneWay}">
+                                        <ToggleButton
+                                            x:Name="VideoModeButton"
+                                            Width="36"
+                                            Height="36"
+                                            IsChecked="True"
+                                            Click="VideoModeButton_Click"
+                                            ToolTipService.ToolTip="Video clip (MP4)">
+                                            <FontIcon
+                                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                Glyph="&#xE714;"
+                                                FontSize="14" />
+                                        </ToggleButton>
+                                        <ToggleButton
+                                            x:Name="AudioModeButton"
+                                            Width="36"
+                                            Height="36"
+                                            Click="AudioModeButton_Click"
+                                            ToolTipService.ToolTip="Audio clip (MP3 or WAV)">
+                                            <FontIcon
+                                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                Glyph="&#xEC4F;"
+                                                FontSize="14" />
+                                        </ToggleButton>
+                                    </StackPanel>
+                                    <ComboBox
+                                        x:Name="TrimAudioFormatCombo"
+                                        Width="80"
+                                        MinHeight="36"
+                                        VerticalAlignment="Center"
+                                        SelectedIndex="0"
+                                        SelectionChanged="TrimAudioFormatCombo_SelectionChanged"
+                                        Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.IsAudioMode), Mode=OneWay}">
+                                        <ComboBoxItem Content="MP3" />
+                                        <ComboBoxItem Content="WAV" />
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom"
+                                    Orientation="Horizontal"
+                                    Spacing="8">
+                                    <Button
+                                        AutomationProperties.AutomationId="CopyTrimGifButton"
+                                        AutomationProperties.Name="Copy trim as GIF"
+                                        Command="{x:Bind ViewModel.CopyTrimGifCommand}"
+                                        HorizontalContentAlignment="Center"
+                                        VerticalContentAlignment="Center"
+                                        Style="{StaticResource OverlayIconButtonStyle}"
+                                        ToolTipService.ToolTip="{x:Bind ViewModel.TrimCopyGifToolTip, Mode=OneWay}"
+                                        Visibility="{x:Bind local:MainPage.InverseBoolToVisibility(ViewModel.IsAudioMode), Mode=OneWay}">
+                                        <Grid
+                                            Width="20"
+                                            Height="16"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                            <TextBlock
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontSize="9"
+                                                FontWeight="SemiBold"
+                                                LineHeight="9"
+                                                Text="GIF"
+                                                TextAlignment="Center"
+                                                Visibility="{x:Bind local:MainPage.TrimActionIdleVisibility(ViewModel.IsCopyTrimGifExporting, ViewModel.TrimGifCopySucceeded), Mode=OneWay}" />
+                                            <ProgressRing
+                                                Width="14"
+                                                Height="14"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                IsActive="{x:Bind ViewModel.IsCopyTrimGifExporting, Mode=OneWay}"
+                                                Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.IsCopyTrimGifExporting), Mode=OneWay}" />
+                                            <FontIcon
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                FontSize="14"
+                                                Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                Glyph="&#xE73E;"
+                                                Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.TrimGifCopySucceeded), Mode=OneWay}" />
+                                        </Grid>
+                                    </Button>
+                                    <Button
+                                        AutomationProperties.AutomationId="CopyTrimButton"
+                                        Command="{x:Bind ViewModel.CopyTrimCommand}"
+                                        Style="{StaticResource OverlayIconButtonStyle}"
+                                        ToolTipService.ToolTip="{x:Bind ViewModel.TrimCopyToolTip, Mode=OneWay}">
+                                        <Grid Width="16" Height="16">
+                                            <FontIcon
+                                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                FontSize="14"
+                                                Glyph="&#xE8C8;"
+                                                Visibility="{x:Bind local:MainPage.TrimActionIdleVisibility(ViewModel.IsCopyTrimExporting, ViewModel.TrimCopySucceeded), Mode=OneWay}" />
+                                            <ProgressRing
+                                                Width="14"
+                                                Height="14"
+                                                IsActive="{x:Bind ViewModel.IsCopyTrimExporting, Mode=OneWay}"
+                                                Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.IsCopyTrimExporting), Mode=OneWay}" />
+                                            <FontIcon
+                                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                FontSize="14"
+                                                Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                Glyph="&#xE73E;"
+                                                Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.TrimCopySucceeded), Mode=OneWay}" />
+                                        </Grid>
+                                    </Button>
+                                    <Button
+                                        AutomationProperties.AutomationId="SaveTrimButton"
+                                        Command="{x:Bind ViewModel.SaveTrimCommand}"
+                                        Style="{StaticResource OverlayIconButtonStyle}"
+                                        ToolTipService.ToolTip="{x:Bind ViewModel.TrimSaveToolTip, Mode=OneWay}">
+                                        <Grid Width="16" Height="16">
+                                            <FontIcon
+                                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                FontSize="14"
+                                                Glyph="&#xE74E;"
+                                                Visibility="{x:Bind local:MainPage.TrimActionIdleVisibility(ViewModel.IsSaveTrimExporting, ViewModel.TrimSaveSucceeded), Mode=OneWay}" />
+                                            <ProgressRing
+                                                Width="14"
+                                                Height="14"
+                                                IsActive="{x:Bind ViewModel.IsSaveTrimExporting, Mode=OneWay}"
+                                                Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.IsSaveTrimExporting), Mode=OneWay}" />
+                                            <FontIcon
+                                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                FontSize="14"
+                                                Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                Glyph="&#xE73E;"
+                                                Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.TrimSaveSucceeded), Mode=OneWay}" />
+                                        </Grid>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                        </Grid>
+                    </Border>
+
+                    <controls:TrimTimelineControl
+                        x:Name="TrimTimeline"
+                        Grid.Row="1"
+                        Margin="20,0,20,8"
+                        AutomationProperties.AutomationId="TrimTimeline"
+                        DurationSeconds="{x:Bind ViewModel.MediaDurationSeconds, Mode=OneWay}"
+                        EndSeconds="{x:Bind ViewModel.TrimEndSeconds, Mode=TwoWay}"
+                        ExpectedFrameCount="{x:Bind ViewModel.TimelineTargetFrameCount, Mode=OneWay}"
+                        FrameAspectRatio="{x:Bind ViewModel.TimelineFrameAspectRatio, Mode=OneWay}"
+                        FramePaths="{x:Bind ViewModel.TimelineFramePaths, Mode=OneWay}"
+                        IsAudioMode="{x:Bind ViewModel.IsAudioMode, Mode=OneWay}"
+                        PlaybackPositionSeconds="{x:Bind ViewModel.TrimPlaybackPositionSeconds, Mode=OneWay}"
+                        SeekRequested="TrimTimeline_SeekRequested"
+                        SelectionChanged="TrimTimeline_SelectionChanged"
+                        StartSeconds="{x:Bind ViewModel.TrimStartSeconds, Mode=TwoWay}"
+                        WaveformPeaks="{x:Bind ViewModel.WaveformPeaks, Mode=OneWay}" />
+                </Grid>
+            </Border>
+
+            <!-- Section 3: History -->
+            <Border
+                x:Name="HistoryPanel"
+                Opacity="1"
+                PointerEntered="HistoryPanel_PointerEntered"
+                PointerExited="HistoryPanel_PointerExited"
+                RenderTransformOrigin="0.5,0"
+                Style="{StaticResource OverlayHistoryCardStyle}"
+                Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.HasHistory), Mode=OneWay}">
+                <Border.RenderTransform>
+                    <CompositeTransform x:Name="HistoryTransform" TranslateY="0" />
+                </Border.RenderTransform>
+                <ListView
+                    x:Name="HistoryList"
+                    MaxHeight="{x:Bind ViewModel.HistoryPanelHeight, Mode=OneWay}"
+                    AutomationProperties.AutomationId="HistoryList"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    IsTabStop="False"
+                    Loaded="HistoryList_Loaded"
+                    ContainerContentChanging="HistoryList_ContainerContentChanging"
+                    IsItemClickEnabled="True"
+                    ItemClick="HistoryList_ItemClick"
+                    PointerExited="HistoryList_PointerExited"
+                    ItemsSource="{x:Bind ViewModel.History, Mode=OneWay}"
+                    SelectedItem="{x:Bind ViewModel.SelectedHistoryItem, Mode=TwoWay}"
+                    SelectionMode="Single">
+                    <ListView.ItemContainerTransitions>
+                        <TransitionCollection>
+                            <AddDeleteThemeTransition />
+                            <ReorderThemeTransition />
+                        </TransitionCollection>
+                    </ListView.ItemContainerTransitions>
+                    <ListView.Resources>
+                        <SolidColorBrush x:Key="ListViewBackgroundColor" Color="Transparent" />
+                        <SolidColorBrush x:Key="ListViewItemBackgroundColor" Color="Transparent" />
+                        <SolidColorBrush x:Key="ListViewItemBackgroundPointerOverColor" Color="Transparent" />
+                        <SolidColorBrush x:Key="ListViewItemBackgroundSelectedColor" Color="Transparent" />
+                        <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOverColor" Color="Transparent" />
+                        <SolidColorBrush x:Key="ListViewItemBackgroundPressedColor" Color="Transparent" />
+                        <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressedColor" Color="Transparent" />
+                    </ListView.Resources>
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Padding" Value="10,8,10,8" />
+                            <Setter Property="Height" Value="64" />
+                            <Setter Property="MinHeight" Value="64" />
+                            <Setter Property="MaxHeight" Value="64" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="CornerRadius" Value="6" />
+                            <Setter Property="UseSystemFocusVisuals" Value="False" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListViewItem">
+                                        <ListViewItemPresenter
+                                            Content="{TemplateBinding Content}"
+                                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                                            ContentTransitions="{TemplateBinding ContentTransitions}"
+                                            Padding="{TemplateBinding Padding}"
+                                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                            CornerRadius="6"
+                                            Background="Transparent"
+                                            PointerOverBackground="Transparent"
+                                            SelectedBackground="Transparent"
+                                            SelectedPointerOverBackground="Transparent"
+                                            PressedBackground="Transparent"
+                                            SelectedPressedBackground="Transparent"
+                                            SelectionCheckMarkVisualEnabled="False"
+                                            CheckBrush="Transparent"
+                                            SelectedBorderBrush="Transparent"
+                                            FocusBorderBrush="Transparent"
+                                            PointerOverBorderBrush="Transparent"
+                                            DisabledOpacity="0.56" />
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="models:DownloadItem">
+                            <Grid
+                                Height="48"
+                                Padding="10,0,10,0"
+                                ColumnSpacing="14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="48" />
+                                    <ColumnDefinition Width="*" MinWidth="0" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border
+                                    Grid.ColumnSpan="3"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="6"
+                                    IsHitTestVisible="False"
+                                    Opacity="0.45"
+                                    Visibility="{x:Bind local:MainPage.BoolToVisibility(ShowsHistoryRowChrome), Mode=OneWay}" />
+
+                                <Grid
+                                    Grid.Column="0"
+                                    Width="48"
+                                    Height="48">
+                                    <Border
+                                        Width="48"
+                                        Height="48"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                        CornerRadius="6"
+                                        Visibility="{x:Bind ThumbnailPath, Mode=OneWay, Converter={StaticResource StringNullOrEmptyToVisibilityConverter}}">
+                                        <FontIcon
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                            FontSize="18"
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                            Glyph="&#xE768;" />
+                                    </Border>
+                                    <Image
+                                        MaxWidth="48"
+                                        MaxHeight="48"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Source="{x:Bind ThumbnailPath, Mode=OneWay, Converter={StaticResource ThumbnailPathConverter}, ConverterParameter=96}"
+                                        Stretch="Uniform"
+                                        Visibility="{x:Bind ThumbnailPath, Mode=OneWay, Converter={StaticResource StringNullOrEmptyToVisibilityConverter}, ConverterParameter=invert}" />
+                                </Grid>
+
+                                <StackPanel
+                                    Grid.Column="1"
+                                    VerticalAlignment="Top"
+                                    Spacing="2">
+                                    <TextBlock
+                                        FontSize="15"
+                                        LineHeight="18"
+                                        Text="{x:Bind SourceUrl, Mode=OneTime}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        FontSize="13"
+                                        LineHeight="16"
+                                        Text="{x:Bind SourceName, Mode=OneTime}"
+                                        TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+
+                                <StackPanel
+                                    Grid.Column="2"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal"
+                                    Spacing="4">
+                                    <Button
+                                        Click="HistoryTrim_Click"
+                                        Style="{StaticResource HistoryIconButtonStyle}"
+                                        Tag="{x:Bind}"
+                                        ToolTipService.ToolTip="Edit trim">
+                                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE8C6;" FontSize="14" />
+                                    </Button>
+                                    <Button
+                                        Click="HistoryGif_Click"
+                                        HorizontalContentAlignment="Center"
+                                        VerticalContentAlignment="Center"
+                                        Padding="0"
+                                        Style="{StaticResource HistoryIconButtonStyle}"
+                                        Tag="{x:Bind}"
+                                        ToolTipService.ToolTip="Copy as GIF (Ctrl+G)">
+                                        <Grid
+                                            Width="20"
+                                            Height="16"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                            <TextBlock
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontSize="9"
+                                                FontWeight="SemiBold"
+                                                LineHeight="9"
+                                                Text="GIF"
+                                                TextAlignment="Center"
+                                                Visibility="{x:Bind local:MainPage.HistoryGifIdleVisibility(IsGifExporting, IsGifCopied), Mode=OneWay}" />
+                                            <ProgressRing
+                                                Width="14"
+                                                Height="14"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                IsActive="{x:Bind IsGifExporting, Mode=OneWay}"
+                                                Visibility="{x:Bind local:MainPage.BoolToVisibility(IsGifExporting), Mode=OneWay}" />
+                                            <FontIcon
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                FontSize="14"
+                                                Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                Glyph="&#xE73E;"
+                                                Visibility="{x:Bind local:MainPage.BoolToVisibility(IsGifCopied), Mode=OneWay}" />
+                                        </Grid>
+                                    </Button>
+                                    <Button
+                                        Click="HistoryCopy_Click"
+                                        Style="{StaticResource HistoryIconButtonStyle}"
+                                        Tag="{x:Bind}"
+                                        ToolTipService.ToolTip="Copy file">
+                                        <FontIcon
+                                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                            FontSize="14"
+                                            Glyph="{x:Bind local:MainPage.TrimCopyGlyph(IsCopied), Mode=OneWay}" />
+                                    </Button>
+                                    <Button
+                                        Click="HistoryMore_Click"
+                                        Style="{StaticResource HistoryIconButtonStyle}"
+                                        Tag="{x:Bind}"
+                                        ToolTipService.ToolTip="More options">
+                                        <FontIcon
+                                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                            FontSize="16"
+                                            Glyph="&#xE712;" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Border>
+        </StackPanel>
+
+        <Border
+            x:Name="SetupPanel"
+            Width="460"
+            Padding="26"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Margin="0,40,0,0"
+            Style="{StaticResource OverlayCardStyle}"
+            Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.ShowDependencySetup), Mode=OneWay}">
+            <StackPanel Spacing="20">
+                <StackPanel Spacing="8">
+                    <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Welcome to TrimFetch" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource BodyTextBlockStyle}"
+                        Text="TrimFetch needs winget (App Installer), yt-dlp, and ffmpeg before you can download or trim. Install everything below — no hotkey required until setup finishes."
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.SetupMissingToolsSummary, Mode=OneWay}" />
+                </StackPanel>
+
+                <StackPanel Spacing="4">
+                    <Grid MinHeight="44" Padding="4,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Windows Package Manager (winget)" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.WingetSetupStatusText, Mode=OneWay}" />
+                        </StackPanel>
+                        <ProgressRing
+                            Grid.Column="1"
+                            Width="16"
+                            Height="16"
+                            VerticalAlignment="Center"
+                            IsActive="True"
+                            Visibility="{x:Bind local:MainPage.SetupItemInstallingVisibility(ViewModel.WingetSetupState), Mode=OneWay}" />
+                        <FontIcon
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                            Glyph="&#xE73E;"
+                            Visibility="{x:Bind local:MainPage.SetupItemInstalledVisibility(ViewModel.WingetSetupState), Mode=OneWay}" />
+                        <FontIcon
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                            Glyph="&#xE783;"
+                            Visibility="{x:Bind local:MainPage.SetupItemMissingVisibility(ViewModel.WingetSetupState), Mode=OneWay}" />
+                    </Grid>
+                    <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" Opacity="0.55" />
+                    <Grid MinHeight="44" Padding="4,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="yt-dlp" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.YtDlpSetupStatusText, Mode=OneWay}" />
+                        </StackPanel>
+                        <ProgressRing
+                            Grid.Column="1"
+                            Width="16"
+                            Height="16"
+                            VerticalAlignment="Center"
+                            IsActive="True"
+                            Visibility="{x:Bind local:MainPage.SetupItemInstallingVisibility(ViewModel.YtDlpSetupState), Mode=OneWay}" />
+                        <FontIcon
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                            Glyph="&#xE73E;"
+                            Visibility="{x:Bind local:MainPage.SetupItemInstalledVisibility(ViewModel.YtDlpSetupState), Mode=OneWay}" />
+                        <FontIcon
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                            Glyph="&#xE783;"
+                            Visibility="{x:Bind local:MainPage.SetupItemMissingVisibility(ViewModel.YtDlpSetupState), Mode=OneWay}" />
+                    </Grid>
+                    <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" Opacity="0.55" />
+                    <Grid MinHeight="44" Padding="4,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="ffmpeg" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.FfmpegSetupStatusText, Mode=OneWay}" />
+                        </StackPanel>
+                        <ProgressRing
+                            Grid.Column="1"
+                            Width="16"
+                            Height="16"
+                            VerticalAlignment="Center"
+                            IsActive="True"
+                            Visibility="{x:Bind local:MainPage.SetupItemInstallingVisibility(ViewModel.FfmpegSetupState), Mode=OneWay}" />
+                        <FontIcon
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                            Glyph="&#xE73E;"
+                            Visibility="{x:Bind local:MainPage.SetupItemInstalledVisibility(ViewModel.FfmpegSetupState), Mode=OneWay}" />
+                        <FontIcon
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                            Glyph="&#xE783;"
+                            Visibility="{x:Bind local:MainPage.SetupItemMissingVisibility(ViewModel.FfmpegSetupState), Mode=OneWay}" />
+                    </Grid>
+                </StackPanel>
+
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.SetupProgressMessage, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind local:MainPage.StringToVisibility(ViewModel.SetupProgressMessage), Mode=OneWay}" />
+
+                <StackPanel Spacing="10">
+                    <Button
+                        HorizontalAlignment="Stretch"
+                        Command="{x:Bind ViewModel.InstallDependenciesCommand}"
+                        IsEnabled="{x:Bind local:MainPage.InverseBool(ViewModel.DependenciesReady), Mode=OneWay}"
+                        Style="{StaticResource AccentButtonStyle}">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                            <ProgressRing
+                                Width="16"
+                                Height="16"
+                                IsActive="{x:Bind ViewModel.IsInstallingDependencies, Mode=OneWay}" />
+                            <TextBlock Text="{x:Bind ViewModel.SetupInstallButtonText, Mode=OneWay}" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        HorizontalAlignment="Stretch"
+                        Command="{x:Bind ViewModel.RecheckDependenciesCommand}"
+                        Style="{StaticResource DefaultButtonStyle}"
+                        Visibility="{x:Bind local:MainPage.InverseBoolToVisibility(ViewModel.DependenciesReady), Mode=OneWay}">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE72C;" FontSize="14" />
+                            <TextBlock Text="{x:Bind ViewModel.SetupVerifyButtonText, Mode=OneWay}" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        HorizontalAlignment="Center"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Command="{x:Bind ViewModel.CopyInstallPromptCommand}"
+                        Padding="8,4">
+                        <TextBlock
+                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                            Text="Copy manual install commands" />
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>

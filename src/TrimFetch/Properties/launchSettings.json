@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "TrimFetch Media Downloader (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "TrimFetch Media Downloader (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

@@ -1,0 +1,39 @@
+# --- AI / IDE assistants (local only, never publish) ---
+CLAUDE.md
+.claude/
+.cursor/
+.codex/
+AGENTS.md
+.cursorrules
+graphify-out/
+
+# --- Build & IDE ---
+.vs/
+**/[Bb]in/
+**/[Oo]bj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# --- MSIX / signing (generated locally or in CI) ---
+**/devcert.pfx
+**/*.msix
+**/*.msixupload
+**/*.appx
+**/*.appxbundle
+**/AppPackages/
+**/BundleArtifacts/
+artifacts/
+
+# --- Not shipped to GitHub (app + tests + workflow only) ---
+/scripts/
+/test-assets/
+/upstream/
+/tools/
+/src/TrimFetch.StripBenchmark/
+/src/UriTest/
+
+# --- README demo (keep preview.mp4 only) ---
+**/preview.original.mp4
+**/preview.compressed.mp4
