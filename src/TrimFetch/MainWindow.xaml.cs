@@ -45,13 +45,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         RootGrid.RequestedTheme = ElementTheme.Dark;
 
-        try
-        {
-            AppWindow.SetIcon(AppBranding.AppIconIcoPath);
-        }
-        catch
-        {
-        }
+        AppIconHelper.TrySetWindowIcon(AppWindow);
 
         ConfigurePresenter();
         ApplyOverlayChrome();

@@ -106,16 +106,8 @@ internal static class FluentWindowChrome
         }
     }
 
-    public static void TrySetWindowIcon(AppWindow appWindow)
-    {
-        try
-        {
-            appWindow.SetIcon(AppBranding.AppIconIcoPath);
-        }
-        catch
-        {
-        }
-    }
+    public static void TrySetWindowIcon(AppWindow appWindow) =>
+        AppIconHelper.TrySetWindowIcon(appWindow);
 
     public static void ConfigureSettingsPresenter(AppWindow appWindow)
     {

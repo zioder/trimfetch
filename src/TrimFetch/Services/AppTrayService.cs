@@ -75,7 +75,7 @@ public sealed class AppTrayService : IDisposable
             ContextMenuMode = ContextMenuMode.PopupMenu,
         };
 
-        _icon.IconSource = AppIconHelper.CreatePackagedImage(AppBranding.AppIconTraySource);
+        _icon.IconSource = AppIconHelper.CreateAssetImage(AppBranding.AppIconIcoPath);
 
         _icon.ForceCreate();
         UpdateStatusText();

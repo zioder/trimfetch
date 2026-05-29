@@ -63,7 +63,7 @@ public sealed partial class SettingsWindow : Window
             FluentWindowChrome.DefaultSettingsWidthDip,
             FluentWindowChrome.DefaultSettingsHeightDip,
             App.Window);
-        AboutAppIcon.Source = AppIconHelper.CreatePackagedImage(AppBranding.AppIconPngUri);
+        AboutAppIcon.Source = AppIconHelper.CreateAssetImage(AppBranding.AppIconPngPath);
         ProductNameText.Text = AppBranding.FullName;
         VersionText.Text = GetVersionLabel();
         ViewModel.DependenciesChanged += (_, _) => DependenciesChanged?.Invoke(this, EventArgs.Empty);
