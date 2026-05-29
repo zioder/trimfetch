@@ -21,8 +21,8 @@
 #endif
 
 #if TargetArch == "arm64"
-  #define ArchAllowed "arm64compatible"
-  #define ArchInstallMode "arm64compatible"
+  #define ArchAllowed "arm64"
+  #define ArchInstallMode "arm64"
 #else
   #define ArchAllowed "x64compatible"
   #define ArchInstallMode "x64compatible"
