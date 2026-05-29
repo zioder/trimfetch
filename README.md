@@ -8,8 +8,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/zioder/trimfetch/releases/latest"><b>⬇ Download for Windows</b></a>
-  &nbsp;·&nbsp;
+  <a href="https://apps.microsoft.com/detail/9P8G93MRDDW3?referrer=appbadge&mode=full" target="_blank" rel="noopener noreferrer">
+    <img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get it from Microsoft" />
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/zioder/trimfetch/releases/latest">
+    <img src="https://img.shields.io/github/v/release/zioder/trimfetch?label=Download%20from%20GitHub&logo=github&logoColor=white&color=24292f&labelColor=57606a" height="32" alt="Download from GitHub Releases" />
+  </a>
+</p>
+
+<p align="center">
   <a href="https://www.buymeacoffee.com/zioder"><img height="40" alt="Buy Me A Coffee" src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" /></a>
 </p>
 
@@ -145,7 +153,9 @@ dotnet test tests/TrimFetch.Helpers.Tests/ --filter "FullyQualifiedName~YtDlpOut
 
 ## Release & distribution
 
-Each [GitHub Release](https://github.com/zioder/trimfetch/releases) includes per-architecture installers (PowerToys-style naming), plus **Source code (zip)** and **Source code (tar.gz)** generated automatically from the tag.
+**Recommended:** install from the [Microsoft Store](https://apps.microsoft.com/detail/9P8G93MRDDW3) (auto-updates, signed package).
+
+**Alternative:** each [GitHub Release](https://github.com/zioder/trimfetch/releases) includes per-architecture installers (PowerToys-style naming), plus **Source code (zip)** and **Source code (tar.gz)** generated automatically from the tag.
 
 | Download | CPU |
 |----------|-----|

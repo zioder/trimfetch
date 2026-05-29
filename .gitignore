@@ -18,6 +18,7 @@ graphify-out/
 
 # --- MSIX / signing (generated locally or in CI) ---
 **/devcert.pfx
+**/Package.StoreAssociation.xml
 **/*.msix
 **/*.msixupload
 **/*.appx
@@ -25,8 +26,11 @@ graphify-out/
 **/AppPackages/
 **/BundleArtifacts/
 artifacts/
+store-packages/
+**/msix-staging/
 
 # --- Not shipped to GitHub (app + tests + workflow only) ---
+/installer/
 /scripts/
 /test-assets/
 /upstream/
