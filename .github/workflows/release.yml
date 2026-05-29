@@ -90,17 +90,21 @@ jobs:
               "src/TrimFetch/bin/$($target.Platform)/Release/net10.0-windows10.0.26100.0/$($target.Rid)/publish",
               "src/TrimFetch/bin/Release/net10.0-windows10.0.26100.0/$($target.Rid)/publish"
             )
-            $publishDir = $candidates | Where-Object { Test-Path (Join-Path $_ 'TrimFetch.exe') } | Select-Object -First 1
-            if (-not $publishDir) {
+            $publishDirRel = $candidates | Where-Object { Test-Path (Join-Path $_ 'TrimFetch.exe') } | Select-Object -First 1
+            if (-not $publishDirRel) {
               throw "Publish output not found for $($target.Arch)."
             }
+
+            # Inno resolves relative PublishDir from installer/, not repo root — use absolute paths.
+            $publishDir = (Resolve-Path -LiteralPath $publishDirRel).Path
+            $outputDir = (Resolve-Path -LiteralPath artifacts).Path
 
             Write-Host "Publish directory: $publishDir"
             & $iscc installer/TrimFetch.iss `
               "/DPublishDir=$publishDir" `
               "/DMyAppVersion=$semver" `
               "/DTargetArch=$($target.Arch)" `
-              "/DOutputDir=$env:GITHUB_WORKSPACE/artifacts"
+              "/DOutputDir=$outputDir"
 
             $setupName = "TrimFetchSetup-$semver-$($target.Arch).exe"
             $built = Get-ChildItem artifacts -Filter "TrimFetchSetup-$semver-$($target.Arch).exe" -File | Select-Object -First 1

@@ -1,5 +1,5 @@
 ; Inno Setup — TrimFetchSetup-{version}-{arch}.exe (PowerToys-style naming)
-; CI: iscc installer/TrimFetch.iss /DPublishDir=... /DMyAppVersion=1.0.0 /DTargetArch=x64 /DOutputDir=artifacts
+; CI: pass absolute /DPublishDir (Inno resolves relative paths from this script's folder).
 
 #ifndef MyAppName
   #define MyAppName "TrimFetch Media Downloader"
