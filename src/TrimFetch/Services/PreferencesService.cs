@@ -17,9 +17,7 @@ public sealed class PreferencesService
         WriteIndented = true,
     };
 
-    public string AppDataFolder { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        AppBranding.StorageFolderName);
+    public string AppDataFolder => AppDataPaths.StorageRoot;
 
     public string DefaultDownloadFolder { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),

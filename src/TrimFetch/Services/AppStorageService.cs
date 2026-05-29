@@ -66,7 +66,14 @@ public sealed class AppStorageService
         {
             await using var stream = new FileStream(
                 HistoryPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            return await JsonSerializer.DeserializeAsync<List<DownloadItem>>(stream, _jsonOptions) ?? [];
+            var loaded = await JsonSerializer.DeserializeAsync<List<DownloadItem>>(stream, _jsonOptions) ?? [];
+            var valid = HistoryPersistence.FilterPersistable(loaded);
+            if (valid.Count != loaded.Count)
+            {
+                await SaveHistoryAsync(valid);
+            }
+
+            return valid;
         }
         catch
         {
@@ -79,6 +86,7 @@ public sealed class AppStorageService
         await HistorySaveGate.WaitAsync();
         try
         {
+            items = HistoryPersistence.FilterPersistable(items);
             Directory.CreateDirectory(AppDataFolder);
             var tempPath = HistoryPath + ".tmp";
             await using (var stream = new FileStream(

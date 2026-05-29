@@ -6,10 +6,7 @@ namespace TrimFetch.Services;
 
 public sealed class VideoThumbnailFetchService
 {
-    private readonly string _previewFolder = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        AppBranding.StorageFolderName,
-        "PreviewThumbnails");
+    private readonly string _previewFolder = Path.Combine(AppDataPaths.StorageRoot, "PreviewThumbnails");
 
     public async Task<string?> FetchThumbnailAsync(string sourceUrl, CancellationToken cancellationToken = default)
     {

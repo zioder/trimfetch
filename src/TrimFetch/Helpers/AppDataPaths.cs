@@ -10,18 +10,26 @@ internal static class AppDataPaths
     {
         get
         {
+            string baseRoot;
             try
             {
-                return Path.Combine(
+                baseRoot = Path.Combine(
                     Windows.Storage.ApplicationData.Current.LocalCacheFolder.Path,
                     AppBranding.StorageFolderName);
             }
             catch
             {
-                return Path.Combine(
+                baseRoot = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     AppBranding.StorageFolderName);
             }
+
+#if DEBUG
+            // Dev/smoke runs (winapp-run, TRIMFETCH_SMOKE_*) must not pollute Release install data.
+            return Path.Combine(baseRoot, "Dev");
+#else
+            return baseRoot;
+#endif
         }
     }
 }
