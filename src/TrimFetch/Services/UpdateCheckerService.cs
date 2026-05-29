@@ -49,6 +49,7 @@ public sealed class UpdateCheckerService
 
     public async Task<DownloadedUpdate> DownloadAsync(
         UpdateCheckResult result,
+        IProgress<UpdateDownloadProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         if (result.Kind != UpdateCheckResultKind.UpdateAvailable
@@ -61,7 +62,10 @@ public sealed class UpdateCheckerService
         using var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.ParseAdd(AppBranding.HttpUserAgent);
 
-        using var response = await client.GetAsync(result.DownloadUrl, cancellationToken);
+        using var response = await client.GetAsync(
+            result.DownloadUrl,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var directory = GetUpdateDownloadDirectory(result.Version);
@@ -74,9 +78,21 @@ public sealed class UpdateCheckerService
             File.Delete(destination);
         }
 
+        var totalBytes = response.Content.Headers.ContentLength;
+        progress?.Report(new UpdateDownloadProgress(0, totalBytes, fileName));
+
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using var target = File.Create(destination);
-        await source.CopyToAsync(target, cancellationToken);
+
+        var buffer = new byte[81_920];
+        long received = 0;
+        int read;
+        while ((read = await source.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
+        {
+            await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            received += read;
+            progress?.Report(new UpdateDownloadProgress(received, totalBytes, fileName));
+        }
 
         return new DownloadedUpdate(result.Version, destination);
     }
@@ -186,3 +202,10 @@ public sealed record UpdateCheckResult(UpdateCheckResultKind Kind, string? Versi
 }
 
 public sealed record DownloadedUpdate(string Version, string FilePath);
+
+public readonly record struct UpdateDownloadProgress(long BytesReceived, long? TotalBytes, string FileName)
+{
+    public double Percent => TotalBytes is > 0
+        ? Math.Clamp(BytesReceived * 100.0 / TotalBytes.Value, 0, 100)
+        : 0;
+}

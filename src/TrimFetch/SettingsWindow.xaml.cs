@@ -261,115 +261,69 @@ public sealed partial class SettingsWindow : Window
     }
 
     private async void CheckForUpdates_Click(object sender, RoutedEventArgs e)
-
     {
-
-        var dialog = new ContentDialog
-
-        {
-
-            Title = "Checking for updates",
-
-            Content = new ProgressRing { IsActive = true, Width = 28, Height = 28 },
-
-            XamlRoot = Content.XamlRoot,
-
-        };
-
-
-
-        _ = dialog.ShowAsync();
-
-
+        var waitDialog = new UpdateWaitDialog(Content.XamlRoot);
+        waitDialog.ShowChecking();
+        _ = waitDialog.ShowAsync();
 
         try
-
         {
-
             var currentLabel = AppVersion.GetDisplayLabel();
-
             var result = await _updateChecker.CheckAsync(currentLabel);
 
-            var downloadedUpdate = result.Kind == UpdateCheckResultKind.UpdateAvailable
-
-                ? await _updateChecker.DownloadAsync(result)
-
-                : null;
-
-            dialog.Hide();
-
-
-
             if (result.Kind == UpdateCheckResultKind.UpToDate)
-
             {
-
+                waitDialog.Close();
                 await ShowMessageAsync($"{AppBranding.ShortName} is up to date", $"You are running {GetVersionLabel()}.");
-
                 return;
-
             }
 
+            DownloadedUpdate? downloadedUpdate = null;
+            if (result.DownloadUrl is not null)
+            {
+                var fileName = Path.GetFileName(result.DownloadUrl.LocalPath);
+                waitDialog.ShowDownloading(result.Version ?? "update", fileName);
 
+                var dispatcher = Content.DispatcherQueue;
+                var progress = new Progress<UpdateDownloadProgress>(report =>
+                {
+                    _ = dispatcher.TryEnqueue(() => waitDialog.ReportDownload(report));
+                });
+
+                downloadedUpdate = await _updateChecker.DownloadAsync(result, progress);
+            }
+
+            waitDialog.Close();
 
             var updateDialog = new ContentDialog
-
             {
-
                 Title = $"{AppBranding.ShortName} {result.Version} is ready",
-
                 Content = downloadedUpdate is null
-
                     ? $"A new version is available. You are running {GetVersionLabel()}."
-
-                    : $"The update has been downloaded in the background. You are running {GetVersionLabel()}.",
-
-                PrimaryButtonText = "Update",
-
+                    : $"The installer has been downloaded. You are running {GetVersionLabel()}.",
+                PrimaryButtonText = "Install",
                 CloseButtonText = "Later",
-
                 DefaultButton = ContentDialogButton.Primary,
-
                 XamlRoot = Content.XamlRoot,
-
             };
 
-
-
             if (await updateDialog.ShowAsync() == ContentDialogResult.Primary)
-
             {
-
                 if (downloadedUpdate is not null)
-
                 {
-
                     await LaunchDownloadedUpdateAsync(downloadedUpdate);
-
                 }
-
                 else
-
                 {
-
                     await LaunchUpdateUriAsync(result);
-
                 }
-
             }
-
         }
-
         catch (Exception ex)
-
         {
-
-            dialog.Hide();
-
+            waitDialog.Close();
             await ShowMessageAsync("Could not check for updates", ex.Message);
-
         }
-
     }
 
 
@@ -724,6 +678,108 @@ public sealed partial class SettingsWindow : Window
 
     }
 
+    private sealed class UpdateWaitDialog
+    {
+        private readonly ContentDialog _dialog;
+        private readonly TextBlock _statusText;
+        private readonly TextBlock _detailText;
+        private readonly ProgressRing _ring;
+        private readonly ProgressBar _progressBar;
+
+        public UpdateWaitDialog(XamlRoot xamlRoot)
+        {
+            _statusText = new TextBlock { TextWrapping = TextWrapping.WrapWholeWords };
+            _detailText = new TextBlock
+            {
+                Opacity = 0.75,
+                FontSize = 12,
+                TextWrapping = TextWrapping.WrapWholeWords,
+            };
+            _ring = new ProgressRing { IsActive = true, Width = 28, Height = 28, HorizontalAlignment = HorizontalAlignment.Left };
+            _progressBar = new ProgressBar
+            {
+                Minimum = 0,
+                Maximum = 100,
+                Height = 6,
+                IsIndeterminate = true,
+            };
+
+            var panel = new StackPanel { Spacing = 12, MinWidth = 340 };
+            panel.Children.Add(_statusText);
+            panel.Children.Add(_ring);
+            panel.Children.Add(_progressBar);
+            panel.Children.Add(_detailText);
+
+            _dialog = new ContentDialog
+            {
+                Title = "Updates",
+                Content = panel,
+                XamlRoot = xamlRoot,
+            };
+        }
+
+        public void ShowChecking()
+        {
+            _statusText.Text = "Checking for updates…";
+            _detailText.Text = string.Empty;
+            _ring.Visibility = Visibility.Visible;
+            _ring.IsActive = true;
+            _progressBar.Visibility = Visibility.Collapsed;
+        }
+
+        public void ShowDownloading(string version, string fileName)
+        {
+            _statusText.Text = $"Downloading TrimFetch {version}…";
+            _detailText.Text = fileName;
+            _ring.Visibility = Visibility.Collapsed;
+            _ring.IsActive = false;
+            _progressBar.Visibility = Visibility.Visible;
+            _progressBar.IsIndeterminate = true;
+            _progressBar.Value = 0;
+        }
+
+        public void ReportDownload(UpdateDownloadProgress progress)
+        {
+            if (progress.TotalBytes is > 0)
+            {
+                _progressBar.IsIndeterminate = false;
+                _progressBar.Value = progress.Percent;
+                _detailText.Text =
+                    $"{FormatByteSize(progress.BytesReceived)} / {FormatByteSize(progress.TotalBytes.Value)} ({progress.Percent:0}%) — {progress.FileName}";
+            }
+            else
+            {
+                _progressBar.IsIndeterminate = true;
+                _detailText.Text = $"{FormatByteSize(progress.BytesReceived)} downloaded — {progress.FileName}";
+            }
+        }
+
+        public Task<ContentDialogResult> ShowAsync() => _dialog.ShowAsync().AsTask();
+
+        public void Close() => _dialog.Hide();
+
+        private static string FormatByteSize(long bytes)
+        {
+            if (bytes < 1_024)
+            {
+                return $"{bytes} B";
+            }
+
+            var size = bytes / 1024.0;
+            if (size < 1_024)
+            {
+                return $"{size:0.#} KB";
+            }
+
+            size /= 1024.0;
+            if (size < 1_024)
+            {
+                return $"{size:0.#} MB";
+            }
+
+            return $"{size / 1024.0:0.#} GB";
+        }
+    }
 }
 
 
