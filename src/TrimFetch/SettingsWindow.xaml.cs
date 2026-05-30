@@ -3,8 +3,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using System.Diagnostics;
 using Windows.Graphics;
-using Windows.Storage;
 using Windows.System;
 using TrimFetch.Helpers;
 using TrimFetch.Models;
@@ -354,14 +354,23 @@ public sealed partial class SettingsWindow : Window
 
 
 
-    private static async Task LaunchDownloadedUpdateAsync(DownloadedUpdate update)
-
+    private static Task LaunchDownloadedUpdateAsync(DownloadedUpdate update)
     {
+        Process.Start(new ProcessStartInfo(update.FilePath)
+        {
+            UseShellExecute = true,
+        });
 
-        var file = await StorageFile.GetFileFromPathAsync(update.FilePath);
+        if (App.Window is MainWindow mainWindow)
+        {
+            mainWindow.ExitApplication();
+        }
+        else
+        {
+            Application.Current.Exit();
+        }
 
-        _ = await Launcher.LaunchFileAsync(file);
-
+        return Task.CompletedTask;
     }
 
 

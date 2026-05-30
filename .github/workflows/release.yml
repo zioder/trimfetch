@@ -70,6 +70,10 @@ jobs:
 
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           $semver = '${{ steps.version.outputs.semver }}'
+          $parts = $semver.Split('.', [StringSplitOptions]::RemoveEmptyEntries)
+          while ($parts.Count -lt 3) { $parts += '0' }
+          $assemblyVersion = "$($parts[0]).$($parts[1]).$($parts[2]).0"
+          $applicationVersion = [int]$parts[2]
           $targets = @(
             @{ Platform = 'x64'; Rid = 'win-x64'; Arch = 'x64' },
             @{ Platform = 'ARM64'; Rid = 'win-arm64'; Arch = 'arm64' }
@@ -83,6 +87,11 @@ jobs:
               -c Release `
               -p:Platform=$($target.Platform) `
               -p:WindowsPackageType=None `
+              -p:Version=$semver `
+              -p:AssemblyVersion=$assemblyVersion `
+              -p:FileVersion=$assemblyVersion `
+              -p:ApplicationDisplayVersion=$semver `
+              -p:ApplicationVersion=$applicationVersion `
               -r $($target.Rid) `
               --self-contained true
 
