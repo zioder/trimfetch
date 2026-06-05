@@ -40,6 +40,7 @@ public sealed partial class MainPage : Page
     private ScrollViewer? _historyScrollViewer;
     private bool _isHistoryPointerOver;
     private bool _deferTrimSurfaceSchedule;
+    private bool _isInputChromeHovered;
     private Task<int>? _downloadPrepTask;
     private string? _downloadPrepItemId;
     private readonly DispatcherTimer _trimPlaybackTimer = new()
@@ -58,6 +59,7 @@ public sealed partial class MainPage : Page
         ViewModel.StartDownloadTrimPrepAsync = EnsureDownloadTrimPrepAsync;
         ViewModel.CompleteDownloadWithTrimRevealAsync = CompleteDownloadWithTrimRevealAsync;
         ViewModel.ClipboardLaunchOrchestratorAsync = RunClipboardLaunchPipelineAsync;
+        ViewModel.UpdateInstallRequested = RequestUpdateInstallAsync;
         ViewModel.DownloadProgressChanged += OnViewModelDownloadProgressChanged;
         ViewModel.GetTrimSelectionFromView = () => new TrimSelection(
             TrimTimeline.StartSeconds,
@@ -339,6 +341,7 @@ public sealed partial class MainPage : Page
         ResetSectionVisualStates();
         SetSettingsButtonVisible(false);
         SetTrimControlsVisible(false);
+        SetUpdateButtonVisible(false);
 
         if (FocusManager.GetFocusedElement() is not null)
         {
@@ -1244,6 +1247,22 @@ public sealed partial class MainPage : Page
             });
         }
 
+        if (e.PropertyName is nameof(ViewModel.IsUpdateDownloading)
+            || e.PropertyName is nameof(ViewModel.UpdateState))
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                UpdateDownloadProgressChrome();
+                SetUpdateButtonVisible(_isInputChromeHovered);
+                if (e.PropertyName is nameof(ViewModel.UpdateState))
+                {
+                    UpdateButtonColumn.Width = ViewModel.IsUpdateButtonVisible
+                        ? new GridLength(28)
+                        : new GridLength(0);
+                }
+            });
+        }
+
         if (e.PropertyName is nameof(ViewModel.IsDownloading)
             && !ViewModel.IsDownloading)
         {
@@ -1285,6 +1304,9 @@ public sealed partial class MainPage : Page
             _blockTrimVideoReveal = true;
             _deferTrimSurfaceSchedule = true;
 
+            // Keep the ring moving through the hidden prep instead of freezing near full.
+            StartTrimPrepCreep();
+
             ViewModel.ActiveTrimItem = item;
             var session = Interlocked.Increment(ref _trimSession);
             if (!await PrepareTrimSurfaceCoreAsync(session, item, CancellationToken.None))
@@ -1301,14 +1323,12 @@ public sealed partial class MainPage : Page
 
             if (!ViewModel.IsAudioMode)
             {
+                // Only the placeholder strip (which reserves the filmstrip layout) and the video
+                // prewarm gate the reveal. The real thumbnails are generated after the reveal by
+                // CompleteTrimOpen's fire-and-forget EnsureTimelineStripAsync, so the video shows
+                // as soon as it's ready instead of waiting on every ffmpeg still.
                 await ViewModel.PrepareTimelineStripPlaceholdersAsync(item);
-                if (session != _trimSession)
-                {
-                    AbortTrimOpen(session);
-                    return -1;
-                }
-
-                await ViewModel.EnsureTimelineStripAsync(item);
+                AppDiagnostic.Log("TIMING prep: placeholders done");
                 if (session != _trimSession)
                 {
                     AbortTrimOpen(session);
@@ -1316,6 +1336,7 @@ public sealed partial class MainPage : Page
                 }
 
                 await PrewarmTrimVideoForRevealAsync(session);
+                AppDiagnostic.Log("TIMING prep: prewarm done");
             }
             else
             {
@@ -1327,7 +1348,9 @@ public sealed partial class MainPage : Page
                 }
             }
 
-            EnsureDownloadInHistory(item);
+            // The download is added to history only after the trim video is revealed
+            // (see PlayDownloadCompletionRevealAsync), so the item slides into the list after
+            // the video appears rather than being pre-listed during the hidden prep.
             SyncDownloadPrepOverlayBounds(session);
 
             TrimEntranceStoryboard.Stop();
@@ -1342,7 +1365,9 @@ public sealed partial class MainPage : Page
             var session = -1;
             try
             {
+                AppDiagnostic.Log("TIMING completion: invoked (download done)");
                 session = await EnsureDownloadTrimPrepAsync(item);
+                AppDiagnostic.Log("TIMING completion: prep returned");
                 if (session < 0
                     || !ViewModel.DownloadTrimReadyForReveal
                     || !IsDownloadTrimPrimedForReveal(item, session))
@@ -1365,6 +1390,7 @@ public sealed partial class MainPage : Page
             }
             finally
             {
+                StopTrimPrepCreep();
                 _revealTrimForDownloadCompletion = false;
                 _excludeTrimFromOverlayHeight = false;
                 _includeTrimHeightInOverlayMeasure = false;
@@ -1802,16 +1828,70 @@ public sealed partial class MainPage : Page
         InputThumbnailImage.Source = null;
     }
 
-    private void InputChrome_PointerEntered(object sender, PointerRoutedEventArgs e) =>
+    private void InputChrome_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _isInputChromeHovered = true;
         SetSettingsButtonVisible(true);
+        SetUpdateButtonVisible(true);
+    }
 
-    private void InputChrome_PointerExited(object sender, PointerRoutedEventArgs e) =>
+    private void InputChrome_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        _isInputChromeHovered = false;
         SetSettingsButtonVisible(false);
+        SetUpdateButtonVisible(false);
+    }
 
     private void SetSettingsButtonVisible(bool visible)
     {
         SettingsButton.Opacity = visible ? 1 : 0;
         SettingsButton.IsHitTestVisible = visible;
+    }
+
+    private void SetUpdateButtonVisible(bool visible)
+    {
+        if (UpdateButton.Visibility != Visibility.Visible)
+        {
+            UpdateButton.Opacity = 0;
+            UpdateButton.IsHitTestVisible = false;
+            return;
+        }
+
+        UpdateButton.Opacity = visible ? 1 : 0;
+        UpdateButton.IsHitTestVisible = visible;
+    }
+
+    /// <summary>
+    /// Launches the downloaded installer and closes the app. Returns false (leaving the VM in
+    /// the Downloaded state, so the update button stays live for a one-click retry) when the
+    /// launch fails.
+    /// </summary>
+    private Task<bool> RequestUpdateInstallAsync(DownloadedUpdate update)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(update.FilePath)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostic.LogException("Update launch", ex);
+            ViewModel.StatusMessage = $"Couldn't launch installer: {ex.Message}";
+            return Task.FromResult(false);
+        }
+
+        if (App.Window is MainWindow mainWindow)
+        {
+            mainWindow.ExitApplication();
+        }
+        else
+        {
+            Application.Current.Exit();
+        }
+
+        return Task.FromResult(true);
     }
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e) => ShowSettings();

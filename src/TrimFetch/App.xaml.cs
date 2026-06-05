@@ -84,7 +84,8 @@ public partial class App : Application
         _ = AppServices.Startup.SyncWithPreferenceAsync(new PreferencesService());
         var mainWindow = new MainWindow
         {
-            // Reveal the overlay on a direct user launch; stay tray-only at login (startup task).
+            // Reveal the overlay on a direct user launch; stay tray-only at login (startup task),
+            // ready for the global hotkey.
             ShouldRevealOnLaunch = !IsStartupLaunch(),
         };
         Window = mainWindow;

@@ -40,7 +40,8 @@ public sealed partial class MainPage
 
     private void UpdateDownloadProgressChrome()
     {
-        if (!ViewModel.IsFileDownloading)
+        var showContour = ViewModel.IsFileDownloading || ViewModel.IsUpdateDownloading;
+        if (!showContour)
         {
             StopDownloadProgressPulse();
 
@@ -106,6 +107,34 @@ public sealed partial class MainPage
         return Task.WhenAny(tcs.Task, Task.Delay(240));
     }
 
+    private DispatcherQueueTimer? _trimPrepCreepTimer;
+    private DateTime _trimPrepCreepStart;
+
+    /// <summary>
+    /// While the trim surface is prepared (ffprobe + media open), creep the ring from
+    /// PostProcessEnd toward PreRevealMax so it keeps moving instead of freezing near full.
+    /// The creep is asymptotic, so it stays smooth for any prep length (short clip or long video).
+    /// </summary>
+    private void StartTrimPrepCreep()
+    {
+        StopTrimPrepCreep();
+        _trimPrepCreepStart = DateTime.UtcNow;
+        _trimPrepCreepTimer = DispatcherQueue.CreateTimer();
+        _trimPrepCreepTimer.Interval = TimeSpan.FromMilliseconds(16);
+        _trimPrepCreepTimer.Tick += (_, _) =>
+        {
+            var elapsedSeconds = (DateTime.UtcNow - _trimPrepCreepStart).TotalSeconds;
+            ViewModel.ReportPipelineProgress(DownloadPipelineProgress.TrimPrepCreep(elapsedSeconds));
+        };
+        _trimPrepCreepTimer.Start();
+    }
+
+    private void StopTrimPrepCreep()
+    {
+        _trimPrepCreepTimer?.Stop();
+        _trimPrepCreepTimer = null;
+    }
+
     private void StartDownloadProgressPulse()
     {
         StopDownloadProgressPulse();
@@ -121,7 +150,8 @@ public sealed partial class MainPage
         _downloadProgressPulseTimer.Interval = TimeSpan.FromMilliseconds(80);
         _downloadProgressPulseTimer.Tick += (_, _) =>
         {
-            if (_downloadHasRealProgress || !ViewModel.IsFileDownloading)
+            var stillDownloading = ViewModel.IsFileDownloading || ViewModel.IsUpdateDownloading;
+            if (_downloadHasRealProgress || !stillDownloading)
             {
                 return;
             }
@@ -146,10 +176,9 @@ public sealed partial class MainPage
         }
 
         _contourUpdateQueued = true;
-        var priority = _contourProgressPending >= 0.9
-            ? DispatcherQueuePriority.Normal
-            : DispatcherQueuePriority.Low;
-        _ = DispatcherQueue.TryEnqueue(priority, () =>
+        // Normal priority throughout: Low starved the contour during trim prep (UI thread busy
+        // with media open + layout), which made the creep stutter.
+        _ = DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Normal, () =>
         {
             _contourUpdateQueued = false;
             ApplyDownloadProgress(_contourProgressPending);

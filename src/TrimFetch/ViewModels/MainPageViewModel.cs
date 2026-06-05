@@ -8,6 +8,16 @@ using TrimFetch.Services;
 
 namespace TrimFetch.ViewModels;
 
+public enum AppUpdateState
+{
+    None,
+    Checking,
+    Available,
+    Downloading,
+    Downloaded,
+    Failed,
+}
+
 public partial class MainPageViewModel : ObservableObject
 {
     private readonly AppStorageService _storage = new();
@@ -21,6 +31,7 @@ public partial class MainPageViewModel : ObservableObject
     private readonly ThumbnailGeneratorService _thumbnailGenerator = new();
     private readonly VideoThumbnailFetchService _thumbnailFetch = new();
     private readonly DependencySetupService _dependencySetup = new();
+    private readonly UpdateCheckerService _updateChecker = new();
     private CancellationTokenSource? _downloadCts;
     private int _downloadSession;
     private string? _inFlightDownloadUrl;
@@ -48,6 +59,9 @@ public partial class MainPageViewModel : ObservableObject
     private string? _lastClipboardOfferFingerprint;
     private bool _suppressHistoryNotifications;
     private CancellationTokenSource? _historySaveDebounceCts;
+    private UpdateCheckResult? _pendingUpdateResult;
+    private DownloadedUpdate? _downloadedUpdate;
+    private int _updateCheckSession;
 
     public bool SuppressUrlAutoDownload { get; set; }
 
@@ -57,6 +71,8 @@ public partial class MainPageViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(DownloadCommand))]
+    [NotifyPropertyChangedFor(nameof(IsUpdateOverlayVisible))]
+    [NotifyPropertyChangedFor(nameof(EffectiveUrlPlaceholderText))]
     public partial string SourceUrl { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -65,6 +81,9 @@ public partial class MainPageViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(DownloadCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartUpdateDownloadCommand))]
+    [NotifyPropertyChangedFor(nameof(IsDownloadBusy))]
+    [NotifyPropertyChangedFor(nameof(IsInputLocked))]
     public partial bool IsDownloading { get; set; }
 
     [ObservableProperty]
@@ -85,6 +104,13 @@ public partial class MainPageViewModel : ObservableObject
 
     /// <summary>Ordered clipboard flow: show URL, download, trim, then history.</summary>
     public Func<string, Task>? ClipboardLaunchOrchestratorAsync { get; set; }
+
+    /// <summary>
+    /// Launches the downloaded installer and exits the app. Returns <c>true</c> only when the
+    /// installer launched and the app is shutting down; <c>false</c> when the launch failed
+    /// (the VM stays in <see cref="AppUpdateState.Downloaded"/> so the install can be retried).
+    /// </summary>
+    public Func<DownloadedUpdate, Task<bool>>? UpdateInstallRequested { get; set; }
 
     /// <summary>Raised on the UI thread when yt-dlp reports download percent.</summary>
     public event Action<double>? DownloadProgressChanged;
@@ -149,6 +175,72 @@ public partial class MainPageViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsStatusVisible))]
     public partial string StatusMessage { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUpdate))]
+    [NotifyPropertyChangedFor(nameof(IsUpdateDownloading))]
+    [NotifyPropertyChangedFor(nameof(IsUpdateDownloaded))]
+    [NotifyPropertyChangedFor(nameof(IsUpdateBusy))]
+    [NotifyPropertyChangedFor(nameof(IsInputLocked))]
+    [NotifyPropertyChangedFor(nameof(IsUpdateOverlayVisible))]
+    [NotifyPropertyChangedFor(nameof(UpdateOverlayPrefix))]
+    [NotifyPropertyChangedFor(nameof(IsUpdateButtonVisible))]
+    [NotifyPropertyChangedFor(nameof(UpdateButtonToolTip))]
+    [NotifyPropertyChangedFor(nameof(EffectiveUrlPlaceholderText))]
+    [NotifyCanExecuteChangedFor(nameof(StartUpdateDownloadCommand))]
+    public partial AppUpdateState UpdateState { get; private set; } = AppUpdateState.None;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UpdateButtonToolTip))]
+    public partial string? UpdateVersion { get; private set; }
+
+    [ObservableProperty]
+    public partial double UpdateDownloadProgress { get; private set; }
+
+    public bool HasUpdate => UpdateState == AppUpdateState.Available;
+
+    public bool IsUpdateDownloading => UpdateState == AppUpdateState.Downloading;
+
+    public bool IsUpdateDownloaded => UpdateState == AppUpdateState.Downloaded;
+
+    // Only the download blocks user actions; the launch-time check is silent/background, so a slow
+    // check must not swallow the one-shot clipboard offer or block downloads on first open.
+    public bool IsUpdateBusy => UpdateState == AppUpdateState.Downloading;
+
+    public bool IsInputLocked => IsDownloading || IsUpdateDownloading;
+
+    public bool IsUpdateOverlayVisible =>
+        UpdateState is AppUpdateState.Available or AppUpdateState.Downloading
+            && string.IsNullOrWhiteSpace(SourceUrl);
+
+    public string EffectiveUrlPlaceholderText =>
+        UpdateState is AppUpdateState.Available or AppUpdateState.Downloading
+            ? string.Empty
+            : "Paste Instagram, X, or YouTube URL";
+
+    public string UpdateOverlayPrefix => UpdateState switch
+    {
+        AppUpdateState.Available => "Update available",
+        AppUpdateState.Downloading => "Downloading...",
+        _ => string.Empty,
+    };
+
+    public bool IsUpdateButtonVisible =>
+        UpdateState is AppUpdateState.Available or AppUpdateState.Downloading or AppUpdateState.Downloaded;
+
+    public string UpdateButtonToolTip => UpdateState switch
+    {
+        AppUpdateState.Available => string.IsNullOrWhiteSpace(UpdateVersion)
+            ? "Download update"
+            : $"Download TrimFetch {UpdateVersion}",
+        AppUpdateState.Downloading => string.IsNullOrWhiteSpace(UpdateVersion)
+            ? "Downloading update"
+            : $"Downloading TrimFetch {UpdateVersion}",
+        AppUpdateState.Downloaded => string.IsNullOrWhiteSpace(UpdateVersion)
+            ? "Install update"
+            : $"Install TrimFetch {UpdateVersion}",
+        _ => "Update",
+    };
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowVideo))]
@@ -385,6 +477,136 @@ public partial class MainPageViewModel : ObservableObject
         IsHistoryKeyboardMode = false;
 
         _ = LoadHistoryAndThumbnailsDeferredAsync();
+        _ = CheckForUpdateOnLaunchAsync();
+    }
+
+    /// <summary>
+    /// Best-effort GitHub release check fired once at startup. Silently no-ops on network
+    /// failure or when the local build is already current; only surfaces a chip in the URL
+    /// chrome when a real update is available.
+    /// </summary>
+    public async Task CheckForUpdateOnLaunchAsync()
+    {
+        var session = Interlocked.Increment(ref _updateCheckSession);
+        await UiDispatcher.RunAsync(() =>
+        {
+            if (UpdateState == AppUpdateState.None)
+            {
+                UpdateState = AppUpdateState.Checking;
+            }
+        });
+
+        try
+        {
+            var currentLabel = AppVersion.GetDisplayLabel();
+            var result = await _updateChecker.CheckAsync(currentLabel);
+
+            if (session != _updateCheckSession)
+            {
+                return;
+            }
+
+            await UiDispatcher.RunAsync(() =>
+            {
+                if (result.Kind == UpdateCheckResultKind.UpToDate
+                    || result.DownloadUrl is null
+                    || string.IsNullOrWhiteSpace(result.Version))
+                {
+                    if (UpdateState == AppUpdateState.Checking)
+                    {
+                        UpdateState = AppUpdateState.None;
+                    }
+
+                    return;
+                }
+
+                _pendingUpdateResult = result;
+                UpdateVersion = result.Version;
+                UpdateState = AppUpdateState.Available;
+            });
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostic.Log($"Update check failed: {ex.Message}");
+            await UiDispatcher.RunAsync(() =>
+            {
+                if (session == _updateCheckSession && UpdateState == AppUpdateState.Checking)
+                {
+                    UpdateState = AppUpdateState.None;
+                }
+            });
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanStartUpdateDownload))]
+    private Task StartUpdateDownloadAsync() => UiDispatcher.InvokeAsync(() => StartUpdateDownloadCoreAsync());
+
+    private bool CanStartUpdateDownload() =>
+        UpdateState is AppUpdateState.Available or AppUpdateState.Downloaded && !IsDownloadBusy;
+
+    private async Task StartUpdateDownloadCoreAsync()
+    {
+        // Already on disk (e.g. the user dismissed the install prompt earlier): re-offer
+        // the install instead of downloading again.
+        if (UpdateState == AppUpdateState.Downloaded && _downloadedUpdate is { } ready)
+        {
+            await RequestInstallAsync(ready);
+            return;
+        }
+
+        if (_pendingUpdateResult is not { } result)
+        {
+            return;
+        }
+
+        UpdateState = AppUpdateState.Downloading;
+        UpdateDownloadProgress = 0;
+
+        var progress = new Progress<UpdateDownloadProgress>(report =>
+        {
+            var fraction = report.Percent / 100.0;
+            _ = UiDispatcher.RunAsync(() =>
+            {
+                UpdateDownloadProgress = Math.Max(UpdateDownloadProgress, fraction);
+                DownloadProgressChanged?.Invoke(fraction);
+            });
+        });
+
+        DownloadedUpdate downloaded;
+        try
+        {
+            downloaded = await _updateChecker.DownloadAsync(result, progress);
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostic.LogException("Update download", ex);
+            UpdateState = AppUpdateState.Available;
+            UpdateDownloadProgress = 0;
+            SetStatus($"Update download failed: {ex.Message}");
+            return;
+        }
+
+        _downloadedUpdate = downloaded;
+        _pendingUpdateResult = null;
+        UpdateState = AppUpdateState.Downloaded;
+        await RequestInstallAsync(downloaded);
+    }
+
+    /// <summary>
+    /// Hands off to the UI to launch the installer and exit. If the launch fails the state
+    /// stays <see cref="AppUpdateState.Downloaded"/>, so the update button remains live and
+    /// the install can be retried with one click.
+    /// </summary>
+    private async Task RequestInstallAsync(DownloadedUpdate update)
+    {
+        if (UpdateInstallRequested is null)
+        {
+            return;
+        }
+
+        // When the handler returns true the app is already shutting down, so there is
+        // nothing more to do here.
+        await UpdateInstallRequested(update);
     }
 
     private async Task LoadHistoryAndThumbnailsDeferredAsync()
@@ -457,7 +679,7 @@ public partial class MainPageViewModel : ObservableObject
 
     public async Task OfferClipboardUrlAsync()
     {
-        if (IsDownloadBusy || IsTrimExporting || ShowDependencySetup)
+        if (IsDownloadBusy || IsUpdateBusy || IsTrimExporting || ShowDependencySetup)
         {
             return;
         }
@@ -543,7 +765,7 @@ public partial class MainPageViewModel : ObservableObject
 
     public async Task TryCommitSourceUrlAsync()
     {
-        if (SuppressUrlAutoDownload || IsDownloadBusy || IsTrimExporting || ShowDependencySetup)
+        if (SuppressUrlAutoDownload || IsDownloadBusy || IsUpdateBusy || IsTrimExporting || ShowDependencySetup)
         {
             return;
         }
@@ -559,7 +781,7 @@ public partial class MainPageViewModel : ObservableObject
 
     public async Task CommitSourceUrlOnEnterAsync()
     {
-        if (IsDownloadBusy || IsTrimExporting || ShowDependencySetup)
+        if (IsDownloadBusy || IsUpdateBusy || IsTrimExporting || ShowDependencySetup)
         {
             return;
         }
@@ -608,7 +830,9 @@ public partial class MainPageViewModel : ObservableObject
 
     public bool TryBeginDownload(string url)
     {
-        if (IsDownloadBusy || string.Equals(_inFlightDownloadUrl, url, StringComparison.OrdinalIgnoreCase))
+        if (IsDownloadBusy
+            || IsUpdateBusy
+            || string.Equals(_inFlightDownloadUrl, url, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -958,11 +1182,10 @@ public partial class MainPageViewModel : ObservableObject
 
     private void QueueDownloadProgressReport(double overall)
     {
-        if (!DownloadTrimReadyForReveal)
-        {
-            overall = Math.Min(overall, DownloadPipelineProgress.PostProcessEnd);
-        }
-        else if (overall < 1)
+        // Everything below the reveal is clamped to PreRevealMax so the ring can creep through
+        // the hidden trim prep (ffprobe + media open) instead of freezing at PostProcessEnd;
+        // only the reveal sequence reports an explicit 1.0.
+        if (overall < 1)
         {
             overall = Math.Min(overall, DownloadPipelineProgress.PreRevealMax);
         }
@@ -1020,7 +1243,7 @@ public partial class MainPageViewModel : ObservableObject
         });
     }
 
-    private bool CanDownload() => !IsDownloadBusy && DependenciesReady && !string.IsNullOrWhiteSpace(SourceUrl);
+    private bool CanDownload() => !IsDownloadBusy && !IsUpdateBusy && DependenciesReady && !string.IsNullOrWhiteSpace(SourceUrl);
 
     [RelayCommand]
     private async Task ChooseFolderAsync()
@@ -2380,7 +2603,7 @@ public partial class MainPageViewModel : ObservableObject
     private async Task<bool> TryCommitUrlAsync(string url, bool updateSourceField)
     {
         url = url.Trim();
-        if (IsDownloadBusy || IsTrimExporting || ShowDependencySetup)
+        if (IsDownloadBusy || IsUpdateBusy || IsTrimExporting || ShowDependencySetup)
         {
             return false;
         }
