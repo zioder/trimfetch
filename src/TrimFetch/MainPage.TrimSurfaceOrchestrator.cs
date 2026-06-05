@@ -122,7 +122,11 @@ public sealed partial class MainPage
         await PlayTrimEntranceAsync(session);
     }
 
-    /// <summary>Download at 100%: trim snaps in final state; only history animates into its new slot.</summary>
+    /// <summary>
+    /// Video is ready: smoothly complete the progress ring (held at <c>PostProcessEnd</c> during
+    /// the hidden trim prep), then cross-fade — the ring dissolves as the trim surface fades in,
+    /// so the contour resolves into the trim area instead of snapping. History slides in parallel.
+    /// </summary>
     private async Task PlayDownloadCompletionRevealAsync(int session, DownloadItem item)
     {
         if (session != _trimSession)
@@ -130,7 +134,14 @@ public sealed partial class MainPage
             return;
         }
 
-        ApplyDownloadProgress(1);
+        // The bar was capped during prep; now that the video is ready, smoothly fill it to 100%.
+        // IsFileDownloading stays true here so the contour remains visible while it fills.
+        await AnimateContourToProgressAsync(1, TimeSpan.FromMilliseconds(300));
+        if (session != _trimSession)
+        {
+            return;
+        }
+
         ViewModel.ReportPipelineProgress(1);
 
         TrimEntranceStoryboard.Stop();
@@ -140,14 +151,15 @@ public sealed partial class MainPage
         ContentStack.UpdateLayout();
         var historyStartTop = TryGetElementTop(HistoryPanel);
 
-        BeginDownloadContourFadeOut();
-        ViewModel.CompleteDownloadPipelineVisuals();
-
         _excludeTrimFromOverlayHeight = false;
         _includeTrimHeightInOverlayMeasure = false;
         _blockTrimVideoReveal = false;
 
-        SetTrimPanelVisible(opacity: 1);
+        // Stage the trim surface laid out but transparent: it occupies its final height (so the
+        // history delta measures correctly) and is ready to fade in.
+        TrimPanel.Visibility = Visibility.Visible;
+        TrimPanel.Opacity = 0;
+        TrimTransform.TranslateY = 0;
         CompleteTrimOpen(session, item);
         TrimTimeline.RefreshLayout();
 
@@ -160,10 +172,48 @@ public sealed partial class MainPage
             ? historyStartTop.Value - historyEndTop.Value
             : 0;
 
-        await PlayHistoryTakePlaceAsync(historyDelta, session);
+        // Mark the fade-out before clearing IsFileDownloading so the chrome handler doesn't
+        // snap-collapse the contour mid-reveal.
+        BeginDownloadContourFadeOut();
+        ViewModel.CompleteDownloadPipelineVisuals();
+
+        await Task.WhenAll(
+            PlayTrimRevealFadeAsync(session),
+            PlayHistoryTakePlaceAsync(historyDelta, session));
 
         _includeTrimHeightInOverlayMeasure = false;
         FinishDownloadContourFadeOut();
+    }
+
+    /// <summary>Fades the trim surface in (reusing the entrance storyboard) for the download reveal.</summary>
+    private Task PlayTrimRevealFadeAsync(int session)
+    {
+        if (session != _trimSession)
+        {
+            TrimPanel.Opacity = 1;
+            return Task.CompletedTask;
+        }
+
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnCompleted(object? sender, object e)
+        {
+            TrimEntranceStoryboard.Completed -= OnCompleted;
+            if (session == _trimSession)
+            {
+                TrimPanel.Opacity = 1;
+                TrimTransform.TranslateY = 0;
+                UpdateWindowClipRegion();
+            }
+
+            tcs.TrySetResult();
+        }
+
+        TrimEntranceStoryboard.Stop();
+        TrimPanel.Opacity = 0;
+        TrimEntranceStoryboard.Completed += OnCompleted;
+        TrimEntranceStoryboard.Begin();
+        return tcs.Task;
     }
 
     private void SyncDownloadPrepOverlayBounds(int session)
