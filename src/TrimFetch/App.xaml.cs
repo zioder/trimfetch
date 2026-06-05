@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using Microsoft.Windows.AppLifecycle;
 using TrimFetch.Helpers;
 using TrimFetch.Services;
 
@@ -17,6 +18,8 @@ namespace TrimFetch;
 /// </summary>
 public partial class App : Application
 {
+    private const string MainInstanceKey = "TrimFetch.Main";
+
     /// <summary>
     /// The main application window. Use <c>App.Window</c> from any class that needs
     /// the window reference (for dialogs, pickers, interop, etc.).
@@ -78,7 +81,14 @@ public partial class App : Application
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         ExternalToolLocator.Refresh();
-        AppDiagnostic.Log("App launch");
+        var isStartupLaunch = IsStartupLaunch();
+        AppDiagnostic.Log($"App launch startup={isStartupLaunch} args=\"{args.Arguments}\"");
+
+        if (RedirectToMainInstanceIfNeeded(isStartupLaunch))
+        {
+            return;
+        }
+
         AppServices.Tray.Initialize();
         AppServices.Notifications.EnsureRegistered();
         _ = AppServices.Startup.SyncWithPreferenceAsync(new PreferencesService());
@@ -86,14 +96,56 @@ public partial class App : Application
         {
             // Reveal the overlay on a direct user launch; stay tray-only at login (startup task),
             // ready for the global hotkey.
-            ShouldRevealOnLaunch = !IsStartupLaunch(),
+            ShouldRevealOnLaunch = !isStartupLaunch,
         };
         Window = mainWindow;
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        AppInstance.GetCurrent().Activated += OnAppInstanceActivated;
 
         // Bootstrap WinUI. MainPage decides whether to reveal the overlay (direct launch) or
         // hide to the tray (login launch); when tools are missing it shows the setup card.
         Window.Activate();
+    }
+
+    private static bool RedirectToMainInstanceIfNeeded(bool isStartupLaunch)
+    {
+        try
+        {
+            var mainInstance = AppInstance.FindOrRegisterForKey(MainInstanceKey);
+            if (mainInstance.IsCurrent)
+            {
+                return false;
+            }
+
+            if (!isStartupLaunch)
+            {
+                _ = mainInstance.RedirectActivationToAsync(AppInstance.GetCurrent().GetActivatedEventArgs());
+            }
+
+            Environment.Exit(0);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostic.Log($"Instance redirect failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void OnAppInstanceActivated(object? sender, AppActivationArguments args)
+    {
+        if (args.Kind == ExtendedActivationKind.StartupTask)
+        {
+            return;
+        }
+
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            if (Window is MainWindow mainWindow)
+            {
+                mainWindow.ShowFromBackground();
+            }
+        });
     }
 
     /// <summary>
@@ -102,6 +154,12 @@ public partial class App : Application
     /// </summary>
     private static bool IsStartupLaunch()
     {
+        if (Environment.GetCommandLineArgs()
+            .Any(arg => string.Equals(arg, "--startup", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
         try
         {
             var kind = Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent()

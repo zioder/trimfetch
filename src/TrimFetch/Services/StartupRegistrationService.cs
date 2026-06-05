@@ -79,7 +79,7 @@ public sealed class StartupRegistrationService
                 return;
             }
 
-            key.SetValue(RegistryValueName, $"\"{exePath}\"");
+            key.SetValue(RegistryValueName, $"\"{exePath}\" --startup");
         }
         catch (Exception ex)
         {

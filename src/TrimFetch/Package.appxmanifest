@@ -11,7 +11,7 @@
   <Identity
     Name="ZiedKallel.TrimFetchMediaDownloader"
     Publisher="CN=C23CD2AD-C8FB-4147-9E06-4C046EC0A3AD"
-    Version="1.0.4.0" />
+    Version="1.0.5.0" />
 
   <mp:PhoneIdentity PhoneProductId="EC99169C-4748-4C74-A6AE-7099E6C9E4FD" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 

@@ -1299,10 +1299,16 @@ public sealed partial class MainPage : Page
                 _hasCompletedInitialEntrance = true;
             }
 
+            if (ShouldSwapDownloadIntoOpenTrim(item))
+            {
+                return await RunOpenTrimDownloadSwapPrepAsync(item);
+            }
+
             _revealTrimForDownloadCompletion = true;
             _excludeTrimFromOverlayHeight = true;
             _blockTrimVideoReveal = true;
             _deferTrimSurfaceSchedule = true;
+            _downloadPrepUsesOpenTrimSwap = false;
 
             // Keep the ring moving through the hidden prep instead of freezing near full.
             StartTrimPrepCreep();
@@ -1328,7 +1334,6 @@ public sealed partial class MainPage : Page
                 // CompleteTrimOpen's fire-and-forget EnsureTimelineStripAsync, so the video shows
                 // as soon as it's ready instead of waiting on every ffmpeg still.
                 await ViewModel.PrepareTimelineStripPlaceholdersAsync(item);
-                AppDiagnostic.Log("TIMING prep: placeholders done");
                 if (session != _trimSession)
                 {
                     AbortTrimOpen(session);
@@ -1336,7 +1341,6 @@ public sealed partial class MainPage : Page
                 }
 
                 await PrewarmTrimVideoForRevealAsync(session);
-                AppDiagnostic.Log("TIMING prep: prewarm done");
             }
             else
             {
@@ -1359,15 +1363,48 @@ public sealed partial class MainPage : Page
             return session;
         });
 
+    private bool ShouldSwapDownloadIntoOpenTrim(DownloadItem item) =>
+        TrimPanel.Visibility == Visibility.Visible
+        && _trimOpenItemId is not null
+        && !string.Equals(_trimOpenItemId, item.Id, StringComparison.Ordinal);
+
+    private async Task<int> RunOpenTrimDownloadSwapPrepAsync(DownloadItem item)
+    {
+        _revealTrimForDownloadCompletion = false;
+        _excludeTrimFromOverlayHeight = false;
+        _blockTrimVideoReveal = false;
+        _includeTrimHeightInOverlayMeasure = false;
+        _downloadPrepUsesOpenTrimSwap = true;
+        _deferTrimSurfaceSchedule = true;
+
+        StartTrimPrepCreep();
+
+        ViewModel.ActiveTrimItem = item;
+        var session = Interlocked.Increment(ref _trimSession);
+
+        await SwapTrimInPlaceAsync(session, item);
+        if (session != _trimSession
+            || _trimOpenItemId is null
+            || !string.Equals(_trimOpenItemId, item.Id, StringComparison.Ordinal)
+            || !ViewModel.IsTrimMediaReady)
+        {
+            AbortTrimOpen(session);
+            return -1;
+        }
+
+        TrimEntranceStoryboard.Stop();
+        TrimTransform.TranslateY = 0;
+        ViewModel.SetDownloadTrimReadyForReveal(true);
+        return session;
+    }
+
     private Task CompleteDownloadWithTrimRevealAsync(DownloadItem item) =>
         UiDispatcher.InvokeAsync(async () =>
         {
             var session = -1;
             try
             {
-                AppDiagnostic.Log("TIMING completion: invoked (download done)");
                 session = await EnsureDownloadTrimPrepAsync(item);
-                AppDiagnostic.Log("TIMING completion: prep returned");
                 if (session < 0
                     || !ViewModel.DownloadTrimReadyForReveal
                     || !IsDownloadTrimPrimedForReveal(item, session))
@@ -1375,7 +1412,15 @@ public sealed partial class MainPage : Page
                     throw new InvalidOperationException("Trim surface did not become ready.");
                 }
 
-                await PlayDownloadCompletionRevealAsync(session, item);
+                if (_downloadPrepUsesOpenTrimSwap)
+                {
+                    await PlayDownloadCompletionSwapAsync(session, item);
+                }
+                else
+                {
+                    await PlayDownloadCompletionRevealAsync(session, item);
+                }
+
                 await RunDownloadCompletionUiAsync(item);
                 FlushDeferredOverlayBounds();
             }
@@ -1396,6 +1441,7 @@ public sealed partial class MainPage : Page
                 _includeTrimHeightInOverlayMeasure = false;
                 _blockTrimVideoReveal = false;
                 _deferTrimSurfaceSchedule = false;
+                _downloadPrepUsesOpenTrimSwap = false;
                 ViewModel.SetDownloadTrimReadyForReveal(false);
                 _downloadPrepTask = null;
                 _downloadPrepItemId = null;

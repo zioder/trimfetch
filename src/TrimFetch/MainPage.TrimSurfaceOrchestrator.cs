@@ -30,6 +30,9 @@ public sealed partial class MainPage
     /// <summary>Reserve trim height in overlay measure while the panel stays collapsed for prep.</summary>
     private bool _includeTrimHeightInOverlayMeasure;
 
+    /// <summary>Download completion is replacing an already-open trim item instead of revealing trim from hidden.</summary>
+    private bool _downloadPrepUsesOpenTrimSwap;
+
     private Storyboard? _downloadHistoryMoveStoryboard;
 
     private void ScheduleOpenTrimSurface()
@@ -139,14 +142,12 @@ public sealed partial class MainPage
         // Prep is done: stop the creep and smoothly fill the rest to 100%. IsFileDownloading
         // stays true here so the contour remains visible while it fills.
         StopTrimPrepCreep();
-        AppDiagnostic.Log("TIMING reveal: start (filling contour)");
         await AnimateContourToProgressAsync(1, TimeSpan.FromMilliseconds(220));
         if (session != _trimSession)
         {
             return;
         }
 
-        AppDiagnostic.Log("TIMING reveal: contour at 100%");
         ViewModel.ReportPipelineProgress(1);
 
         TrimEntranceStoryboard.Stop();
@@ -168,7 +169,6 @@ public sealed partial class MainPage
         SetTrimPanelVisible(opacity: 1);
         CompleteTrimOpen(session, item);
         TrimTimeline.RefreshLayout();
-        AppDiagnostic.Log("TIMING reveal: trim shown");
 
         // Video is now on the trim surface: add the download to history so it slides into the
         // list (as an opaque block) after the video appears, rather than being pre-listed.
@@ -186,6 +186,45 @@ public sealed partial class MainPage
         await PlayHistoryTakePlaceAsync(historyDelta, session);
 
         _includeTrimHeightInOverlayMeasure = false;
+        FinishDownloadContourFadeOut();
+    }
+
+    private async Task PlayDownloadCompletionSwapAsync(int session, DownloadItem item)
+    {
+        if (session != _trimSession)
+        {
+            return;
+        }
+
+        StopTrimPrepCreep();
+        await AnimateContourToProgressAsync(1, TimeSpan.FromMilliseconds(180));
+        if (session != _trimSession)
+        {
+            return;
+        }
+
+        ViewModel.ReportPipelineProgress(1);
+
+        HistoryEntranceStoryboard.Stop();
+        _downloadHistoryMoveStoryboard?.Stop();
+
+        ContentStack.UpdateLayout();
+        var historyStartTop = TryGetElementTop(HistoryPanel);
+
+        BeginDownloadContourFadeOut();
+        ViewModel.CompleteDownloadPipelineVisuals();
+
+        EnsureDownloadInHistory(item);
+        SyncOverlayLayout();
+        ContentStack.UpdateLayout();
+
+        var historyEndTop = TryGetElementTop(HistoryPanel);
+        var historyDelta = historyStartTop.HasValue && historyEndTop.HasValue
+            ? historyStartTop.Value - historyEndTop.Value
+            : 0;
+
+        await PlayHistoryTakePlaceAsync(historyDelta, session);
+
         FinishDownloadContourFadeOut();
     }
 
@@ -357,8 +396,6 @@ public sealed partial class MainPage
         StopTrimPlayback();
         HideTrimPanel();
 
-        AppDiagnostic.Log("TIMING prep: core start");
-
         if (!PreparePoster(item))
         {
             AbortTrimOpen(session);
@@ -366,7 +403,6 @@ public sealed partial class MainPage
         }
 
         await ViewModel.EnsureTrimMediaProfileAsync(item);
-        AppDiagnostic.Log("TIMING prep: profile probed");
         if (session != _trimSession || cancellationToken.IsCancellationRequested)
         {
             return false;
@@ -379,8 +415,6 @@ public sealed partial class MainPage
             AbortTrimOpen(session);
             return false;
         }
-
-        AppDiagnostic.Log("TIMING prep: video attached");
 
         _ = ViewModel.TryApplyCachedTimelineStrip(item);
 
@@ -406,8 +440,6 @@ public sealed partial class MainPage
                 AbortTrimOpen(session);
                 return false;
             }
-
-            AppDiagnostic.Log("TIMING prep: media player ready");
         }
         else if (!await WaitForTrimMediaReadyAsync(session, item, TimeSpan.FromSeconds(6)))
         {
