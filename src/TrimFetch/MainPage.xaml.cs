@@ -1304,6 +1304,9 @@ public sealed partial class MainPage : Page
             _blockTrimVideoReveal = true;
             _deferTrimSurfaceSchedule = true;
 
+            // Keep the ring moving through the hidden prep instead of freezing near full.
+            StartTrimPrepCreep();
+
             ViewModel.ActiveTrimItem = item;
             var session = Interlocked.Increment(ref _trimSession);
             if (!await PrepareTrimSurfaceCoreAsync(session, item, CancellationToken.None))
@@ -1320,14 +1323,12 @@ public sealed partial class MainPage : Page
 
             if (!ViewModel.IsAudioMode)
             {
+                // Only the placeholder strip (which reserves the filmstrip layout) and the video
+                // prewarm gate the reveal. The real thumbnails are generated after the reveal by
+                // CompleteTrimOpen's fire-and-forget EnsureTimelineStripAsync, so the video shows
+                // as soon as it's ready instead of waiting on every ffmpeg still.
                 await ViewModel.PrepareTimelineStripPlaceholdersAsync(item);
-                if (session != _trimSession)
-                {
-                    AbortTrimOpen(session);
-                    return -1;
-                }
-
-                await ViewModel.EnsureTimelineStripAsync(item);
+                AppDiagnostic.Log("TIMING prep: placeholders done");
                 if (session != _trimSession)
                 {
                     AbortTrimOpen(session);
@@ -1335,6 +1336,7 @@ public sealed partial class MainPage : Page
                 }
 
                 await PrewarmTrimVideoForRevealAsync(session);
+                AppDiagnostic.Log("TIMING prep: prewarm done");
             }
             else
             {
@@ -1346,7 +1348,9 @@ public sealed partial class MainPage : Page
                 }
             }
 
-            EnsureDownloadInHistory(item);
+            // The download is added to history only after the trim video is revealed
+            // (see PlayDownloadCompletionRevealAsync), so the item slides into the list after
+            // the video appears rather than being pre-listed during the hidden prep.
             SyncDownloadPrepOverlayBounds(session);
 
             TrimEntranceStoryboard.Stop();
@@ -1361,7 +1365,9 @@ public sealed partial class MainPage : Page
             var session = -1;
             try
             {
+                AppDiagnostic.Log("TIMING completion: invoked (download done)");
                 session = await EnsureDownloadTrimPrepAsync(item);
+                AppDiagnostic.Log("TIMING completion: prep returned");
                 if (session < 0
                     || !ViewModel.DownloadTrimReadyForReveal
                     || !IsDownloadTrimPrimedForReveal(item, session))
@@ -1384,6 +1390,7 @@ public sealed partial class MainPage : Page
             }
             finally
             {
+                StopTrimPrepCreep();
                 _revealTrimForDownloadCompletion = false;
                 _excludeTrimFromOverlayHeight = false;
                 _includeTrimHeightInOverlayMeasure = false;

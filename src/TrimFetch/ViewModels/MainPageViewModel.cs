@@ -1180,11 +1180,10 @@ public partial class MainPageViewModel : ObservableObject
 
     private void QueueDownloadProgressReport(double overall)
     {
-        if (!DownloadTrimReadyForReveal)
-        {
-            overall = Math.Min(overall, DownloadPipelineProgress.PostProcessEnd);
-        }
-        else if (overall < 1)
+        // Everything below the reveal is clamped to PreRevealMax so the ring can creep through
+        // the hidden trim prep (ffprobe + media open) instead of freezing at PostProcessEnd;
+        // only the reveal sequence reports an explicit 1.0.
+        if (overall < 1)
         {
             overall = Math.Min(overall, DownloadPipelineProgress.PreRevealMax);
         }

@@ -27,10 +27,16 @@ public static class DownloadPipelineProgress
     public static double FromTrimPrepPhase(double prepFraction) =>
         PostProcessEnd + Math.Clamp(prepFraction, 0, 1) * (TrimPrepEnd - PostProcessEnd);
 
-    public static double TrimPrepCreep(double elapsedFraction)
+    /// <summary>
+    /// Duration-agnostic creep for the hidden trim prep. Rises quickly then continuously slows,
+    /// asymptotically approaching (but never reaching) <see cref="PreRevealMax"/>, so it never
+    /// freezes regardless of how long prep takes — short clips and long videos both stay in
+    /// motion. Only the reveal sequence reports a literal 1.0.
+    /// </summary>
+    public static double TrimPrepCreep(double elapsedSeconds)
     {
-        var t = Math.Clamp(elapsedFraction, 0, 1);
-        var eased = 1 - Math.Pow(1 - t, 2.4);
-        return PostProcessEnd + (TrimPrepEnd - PostProcessEnd) * eased;
+        const double timeConstant = 1.1; // seconds; smaller = faster initial approach.
+        var approach = 1 - Math.Exp(-Math.Max(0, elapsedSeconds) / timeConstant);
+        return PostProcessEnd + (TrimPrepEnd - PostProcessEnd) * approach;
     }
 }
