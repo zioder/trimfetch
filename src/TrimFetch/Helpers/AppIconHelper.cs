@@ -34,6 +34,26 @@ internal static class AppIconHelper
     public static BitmapImage CreateAssetImage(string relativeAssetPath) =>
         new(CreateAssetUri(relativeAssetPath));
 
+    /// <summary>
+    /// Loads <see cref="AppBranding.AppIconIcoPath"/> as a <see cref="System.Drawing.Icon"/>
+    /// straight from the resolved file path. H.NotifyIcon's <c>IconSource</c> pipeline routes
+    /// through <c>StorageFile.GetFileFromApplicationUriAsync</c>, which only accepts
+    /// <c>ms-appx://</c>/<c>ms-appdata://</c> URIs and throws on the <c>file://</c> URI we
+    /// resolve to — so the tray sets its icon from this directly instead.
+    /// </summary>
+    public static System.Drawing.Icon? LoadAppIcon()
+    {
+        try
+        {
+            var path = ResolveAssetPath(AppBranding.AppIconIcoPath);
+            return File.Exists(path) ? new System.Drawing.Icon(path) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public static void TrySetWindowIcon(Microsoft.UI.Windowing.AppWindow appWindow)
     {
         try
