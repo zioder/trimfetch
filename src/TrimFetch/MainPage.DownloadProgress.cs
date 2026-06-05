@@ -40,7 +40,8 @@ public sealed partial class MainPage
 
     private void UpdateDownloadProgressChrome()
     {
-        if (!ViewModel.IsFileDownloading)
+        var showContour = ViewModel.IsFileDownloading || ViewModel.IsUpdateDownloading;
+        if (!showContour)
         {
             StopDownloadProgressPulse();
 
@@ -121,7 +122,8 @@ public sealed partial class MainPage
         _downloadProgressPulseTimer.Interval = TimeSpan.FromMilliseconds(80);
         _downloadProgressPulseTimer.Tick += (_, _) =>
         {
-            if (_downloadHasRealProgress || !ViewModel.IsFileDownloading)
+            var stillDownloading = ViewModel.IsFileDownloading || ViewModel.IsUpdateDownloading;
+            if (_downloadHasRealProgress || !stillDownloading)
             {
                 return;
             }

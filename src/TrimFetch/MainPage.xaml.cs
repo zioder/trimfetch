@@ -40,6 +40,7 @@ public sealed partial class MainPage : Page
     private ScrollViewer? _historyScrollViewer;
     private bool _isHistoryPointerOver;
     private bool _deferTrimSurfaceSchedule;
+    private bool _isInputChromeHovered;
     private Task<int>? _downloadPrepTask;
     private string? _downloadPrepItemId;
     private readonly DispatcherTimer _trimPlaybackTimer = new()
@@ -58,6 +59,7 @@ public sealed partial class MainPage : Page
         ViewModel.StartDownloadTrimPrepAsync = EnsureDownloadTrimPrepAsync;
         ViewModel.CompleteDownloadWithTrimRevealAsync = CompleteDownloadWithTrimRevealAsync;
         ViewModel.ClipboardLaunchOrchestratorAsync = RunClipboardLaunchPipelineAsync;
+        ViewModel.UpdateInstallRequested = RequestUpdateInstallAsync;
         ViewModel.DownloadProgressChanged += OnViewModelDownloadProgressChanged;
         ViewModel.GetTrimSelectionFromView = () => new TrimSelection(
             TrimTimeline.StartSeconds,
@@ -339,6 +341,7 @@ public sealed partial class MainPage : Page
         ResetSectionVisualStates();
         SetSettingsButtonVisible(false);
         SetTrimControlsVisible(false);
+        SetUpdateButtonVisible(false);
 
         if (FocusManager.GetFocusedElement() is not null)
         {
@@ -1244,6 +1247,22 @@ public sealed partial class MainPage : Page
             });
         }
 
+        if (e.PropertyName is nameof(ViewModel.IsUpdateDownloading)
+            || e.PropertyName is nameof(ViewModel.UpdateState))
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                UpdateDownloadProgressChrome();
+                SetUpdateButtonVisible(_isInputChromeHovered);
+                if (e.PropertyName is nameof(ViewModel.UpdateState))
+                {
+                    UpdateButtonColumn.Width = ViewModel.IsUpdateButtonVisible
+                        ? new GridLength(28)
+                        : new GridLength(0);
+                }
+            });
+        }
+
         if (e.PropertyName is nameof(ViewModel.IsDownloading)
             && !ViewModel.IsDownloading)
         {
@@ -1802,16 +1821,70 @@ public sealed partial class MainPage : Page
         InputThumbnailImage.Source = null;
     }
 
-    private void InputChrome_PointerEntered(object sender, PointerRoutedEventArgs e) =>
+    private void InputChrome_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _isInputChromeHovered = true;
         SetSettingsButtonVisible(true);
+        SetUpdateButtonVisible(true);
+    }
 
-    private void InputChrome_PointerExited(object sender, PointerRoutedEventArgs e) =>
+    private void InputChrome_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        _isInputChromeHovered = false;
         SetSettingsButtonVisible(false);
+        SetUpdateButtonVisible(false);
+    }
 
     private void SetSettingsButtonVisible(bool visible)
     {
         SettingsButton.Opacity = visible ? 1 : 0;
         SettingsButton.IsHitTestVisible = visible;
+    }
+
+    private void SetUpdateButtonVisible(bool visible)
+    {
+        if (UpdateButton.Visibility != Visibility.Visible)
+        {
+            UpdateButton.Opacity = 0;
+            UpdateButton.IsHitTestVisible = false;
+            return;
+        }
+
+        UpdateButton.Opacity = visible ? 1 : 0;
+        UpdateButton.IsHitTestVisible = visible;
+    }
+
+    /// <summary>
+    /// Launches the downloaded installer and closes the app. Returns false (leaving the VM in
+    /// the Downloaded state, so the update button stays live for a one-click retry) when the
+    /// launch fails.
+    /// </summary>
+    private Task<bool> RequestUpdateInstallAsync(DownloadedUpdate update)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(update.FilePath)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostic.LogException("Update launch", ex);
+            ViewModel.StatusMessage = $"Couldn't launch installer: {ex.Message}";
+            return Task.FromResult(false);
+        }
+
+        if (App.Window is MainWindow mainWindow)
+        {
+            mainWindow.ExitApplication();
+        }
+        else
+        {
+            Application.Current.Exit();
+        }
+
+        return Task.FromResult(true);
     }
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e) => ShowSettings();

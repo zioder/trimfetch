@@ -7,7 +7,42 @@ namespace TrimFetch.Services;
 
 public sealed class UpdateCheckerService
 {
-    private const string LatestReleaseUrl = "https://api.github.com/repos/zioder/trimfetch/releases/latest";
+    private const string ProductionLatestReleaseUrl = "https://api.github.com/repos/zioder/trimfetch/releases/latest";
+
+#if DEBUG
+    /// <summary>
+    /// DEBUG-only override that points the release check at a local fixture for end-to-end
+    /// testing without a real GitHub release. The expected shape matches the GitHub
+    /// <c>/repos/{owner}/{repo}/releases/latest</c> payload. Accepts either the
+    /// <c>TRIMFETCH_DEBUG_UPDATE_URL</c> env var or a <c>--debug-update-url &lt;url&gt;</c>
+    /// command-line argument; the CLI arg is the reliable channel for packaged
+    /// (<c>winapp run</c>) launches, which get a clean environment block.
+    /// </summary>
+    private static string LatestReleaseUrl =>
+        Environment.GetEnvironmentVariable("TRIMFETCH_DEBUG_UPDATE_URL")
+        ?? GetDebugUpdateUrlArg()
+        ?? ProductionLatestReleaseUrl;
+
+    private static string? GetDebugUpdateUrlArg()
+    {
+        var args = Environment.GetCommandLineArgs();
+        for (var i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], "--debug-update-url", StringComparison.OrdinalIgnoreCase))
+            {
+                var candidate = args[i + 1].Trim();
+                if (!candidate.StartsWith('-'))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return null;
+    }
+#else
+    private static string LatestReleaseUrl => ProductionLatestReleaseUrl;
+#endif
 
     public async Task<UpdateCheckResult> CheckAsync(string currentVersion, CancellationToken cancellationToken = default)
     {

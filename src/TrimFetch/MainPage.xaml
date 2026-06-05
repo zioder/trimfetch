@@ -163,6 +163,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition x:Name="InputThumbnailColumn" Width="0" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition x:Name="UpdateButtonColumn" Width="0" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
@@ -186,37 +187,70 @@
                             Source="{x:Bind ViewModel.InputPreviewThumbnailPath, Mode=OneWay, Converter={StaticResource ThumbnailPathConverter}, ConverterParameter=96}" />
                     </Border>
 
-                    <TextBox
-                        x:Name="UrlTextBox"
-                        Grid.Column="1"
-                        AutomationProperties.AutomationId="UrlTextBox"
-                        IsSpellCheckEnabled="False"
-                        IsTextPredictionEnabled="False"
-                        IsReadOnly="{x:Bind ViewModel.IsDownloading, Mode=OneWay}"
-                        KeyDown="UrlTextBox_KeyDown"
-                        PlaceholderText="Paste Instagram, X, or YouTube URL"
-                        Style="{StaticResource OverlayUrlTextBoxStyle}"
+                    <Grid Grid.Column="1">
+                        <TextBox
+                            x:Name="UrlTextBox"
+                            AutomationProperties.AutomationId="UrlTextBox"
+                            IsSpellCheckEnabled="False"
+                            IsTextPredictionEnabled="False"
+                            IsReadOnly="{x:Bind ViewModel.IsInputLocked, Mode=OneWay}"
+                            KeyDown="UrlTextBox_KeyDown"
+                            PlaceholderText="{x:Bind ViewModel.EffectiveUrlPlaceholderText, Mode=OneWay}"
+                            Style="{StaticResource OverlayUrlTextBoxStyle}"
+                            VerticalAlignment="Center"
+                            Text="{x:Bind ViewModel.SourceUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            TextChanged="UrlTextBox_TextChanged">
+                            <TextBox.Resources>
+                                <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlFocusRingBorderBrush" Color="Transparent" />
+                                <SolidColorBrush x:Key="ControlFocusRingBrush" Color="Transparent" />
+                                <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+                            </TextBox.Resources>
+                        </TextBox>
+
+                        <TextBlock
+                            x:Name="UpdateOverlayText"
+                            Margin="12,0,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            FontSize="18"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            IsHitTestVisible="False"
+                            TextTrimming="CharacterEllipsis"
+                            Text="{x:Bind ViewModel.UpdateOverlayPrefix, Mode=OneWay}"
+                            Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.IsUpdateOverlayVisible), Mode=OneWay}" />
+                    </Grid>
+
+                    <Button
+                        x:Name="UpdateButton"
+                        Grid.Column="2"
+                        Width="28"
+                        Height="28"
+                        Padding="0"
                         VerticalAlignment="Center"
-                        Text="{x:Bind ViewModel.SourceUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                        TextChanged="UrlTextBox_TextChanged">
-                        <TextBox.Resources>
-                            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlFocusRingBorderBrush" Color="Transparent" />
-                            <SolidColorBrush x:Key="ControlFocusRingBrush" Color="Transparent" />
-                            <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
-                        </TextBox.Resources>
-                    </TextBox>
+                        AutomationProperties.Name="Download update"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Command="{x:Bind ViewModel.StartUpdateDownloadCommand}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Opacity="0"
+                        IsHitTestVisible="False"
+                        IsTabStop="False"
+                        ToolTipService.ToolTip="{x:Bind ViewModel.UpdateButtonToolTip, Mode=OneWay}"
+                        Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.IsUpdateButtonVisible), Mode=OneWay}">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="16" Glyph="&#xE118;" />
+                    </Button>
 
                     <Button
                         x:Name="SettingsButton"
-                        Grid.Column="2"
+                        Grid.Column="3"
                         Width="28"
                         Height="28"
                         Padding="0"
