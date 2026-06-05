@@ -235,7 +235,7 @@
                         Height="28"
                         Padding="0"
                         VerticalAlignment="Center"
-                        AutomationProperties.Name="Download update"
+                        AutomationProperties.Name="{x:Bind ViewModel.UpdateButtonToolTip, Mode=OneWay}"
                         Background="Transparent"
                         BorderThickness="0"
                         Command="{x:Bind ViewModel.StartUpdateDownloadCommand}"

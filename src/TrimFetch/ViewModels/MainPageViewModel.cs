@@ -203,7 +203,9 @@ public partial class MainPageViewModel : ObservableObject
 
     public bool IsUpdateDownloaded => UpdateState == AppUpdateState.Downloaded;
 
-    public bool IsUpdateBusy => UpdateState is AppUpdateState.Checking or AppUpdateState.Downloading;
+    // Only the download blocks user actions; the launch-time check is silent/background, so a slow
+    // check must not swallow the one-shot clipboard offer or block downloads on first open.
+    public bool IsUpdateBusy => UpdateState == AppUpdateState.Downloading;
 
     public bool IsInputLocked => IsDownloading || IsUpdateDownloading;
 
